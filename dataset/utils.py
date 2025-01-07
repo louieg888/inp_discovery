@@ -79,7 +79,7 @@ def collate_fn(batch, kwargs, collate_knowledge=True):
 
 
 def get_dataloader(dataset, config):
-    if config.dataset in ['set-trending-sinusoids', 'set-trending-sinusoids-dist-shift']:
+    if config.dataset in ['set-trending-sinusoids', 'set-trending-sinusoids-dist-shift', 'nurd']:
         collate_knowledge = True
     else:
         collate_knowledge = False
@@ -99,7 +99,7 @@ def setup_dataloaders(config):
         train_dataset = SetKnowledgeTrendingSinusoids(split='train', knowledge_type=config.knowledge_type)
         val_dataset = SetKnowledgeTrendingSinusoids(split='val', knowledge_type=config.knowledge_type)
         test_dataset = SetKnowledgeTrendingSinusoids(split='test', knowledge_type=config.knowledge_type)
-       
+        
     elif config.dataset == 'set-trending-sinusoids-dist-shift':
         train_dataset = SetKnowledgeTrendingSinusoidsDistShift(split='train', knowledge_type=config.knowledge_type)
         val_dataset = SetKnowledgeTrendingSinusoidsDistShift(split='val', knowledge_type=config.knowledge_type)
@@ -109,6 +109,11 @@ def setup_dataloaders(config):
         train_dataset = Temperatures(split='train', knowledge_type=config.knowledge_type)
         val_dataset = Temperatures(split='val', knowledge_type=config.knowledge_type)
         test_dataset = Temperatures(split='test', knowledge_type=config.knowledge_type)
+
+    elif config.dataset == 'nurd':
+        train_dataset = NuRD(split='train', knowledge_type=config.knowledge_type)
+        val_dataset = NuRD(split='val', knowledge_type=config.knowledge_type)
+        test_dataset = NuRD(split='test', knowledge_type=config.knowledge_type)
     
     else:
         raise ValueError(f"Unknown dataset {config.dataset}")

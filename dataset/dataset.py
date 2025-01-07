@@ -159,3 +159,28 @@ class Temperatures(Dataset):
         y = torch.tensor(y, dtype=torch.float32).unsqueeze(-1)
 
         return x, y, knowledge
+
+
+class NuRD(Dataset):
+    def __init__(self, split='train', root='./data/nurd', knowledge_type='min_max'):
+        # add config here
+        self.data = pd.read_csv(f'{root}/nurd.csv', converters={"x": lambda x: list(eval(x))})
+        self.data = self.data[self.data['label'] == split]
+
+        self.dim_x = 2
+        self.dim_y = 1
+        self.knowledge_input_dim = 1
+
+    def __len__(self):
+        return len(self.data['task'].unique())
+    
+    def __getitem__(self, idx):
+        x = self.data[self.data['task'] == idx]['x'].values
+        y = self.data[self.data['task'] == idx]['y'].values
+        knowledge = self.data[self.data['task'] == idx]['z'].values
+
+        x = torch.tensor(list(x), dtype=torch.float32)
+        y = torch.tensor(list(y), dtype=torch.float32).unsqueeze(-1)
+        knowledge = torch.tensor(list(knowledge), dtype=torch.float32).unsqueeze(-1)
+
+        return x, y, knowledge
