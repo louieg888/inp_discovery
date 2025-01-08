@@ -9,6 +9,27 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(os.path.join(__file__, os.par
 from models.modules import XYEncoder, LatentEncoder, Decoder, XEncoder
 from models.utils import MultivariateNormalDiag
 
+
+class SyntheticBernoulliReweightingModel(nn.Module):
+    """
+    Reproduced exactly from NuRD paper, models.py:170
+    """
+    def __init__(self):
+        super(SyntheticBernoulliReweightingModel, self).__init__()
+        self.hidden_1 = nn.Linear(1, 16)  # Input dimension 1 (z), 16 hidden units
+        self.hidden_2 = nn.Linear(16, 1)  # Output dimension 1 (parameter for Bernoulli)
+        self.pred_layer = nn.Linear(1, 2)
+ 
+    def forward(self, z):
+        # Apply the hidden layer with ReLU activation
+        hidden_1 = F.relu(self.hidden(z))
+        # Apply the output layer and sigmoid activation to get probabilities
+        hidden_2 = self.hidden_2(hidden_1)
+        prediction = self.pred_layer(hidden_2)
+
+        return prediction
+
+
 class INP(nn.Module):
     def __init__(self, config):
         super().__init__()
