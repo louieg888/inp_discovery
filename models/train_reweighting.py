@@ -38,9 +38,6 @@ class Trainer:
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.lr)
 
-        self.reweighting_model = SyntheticBernoulliReweightingModel()
-        self.reweighting_model.to(self.device)
-        self.reweighting_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1e-2)
         
         self.loss_func = ELBOLoss(beta=config.beta)
         if load_path is not None:
@@ -177,7 +174,13 @@ class Trainer:
 
             folds.append((train_dataloader, val_dataloader))
 
+        reweighting_models = []
+
         for (train_dataloader, val_dataloader) in folds:
+            self.reweighting_model = SyntheticBernoulliReweightingModel()
+            self.reweighting_model.to(self.device)
+            self.reweighting_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1e-2)
+
             for epoch in range(101):
                 for batch in train_dataloader:
                     self.reweighting_model.train()
@@ -195,13 +198,17 @@ class Trainer:
 
                     losses, val_loss = self.eval_weighting(val_dataloader)
                     mean_eval_loss = np.mean(list(losses.values()))
-                    wandb.log({"mean_eval_loss": mean_eval_loss})
-                    wandb.log({"eval_loss": val_loss})
+                    wandb.log({"reweighting_mean_eval_loss": mean_eval_loss})
+                    wandb.log({"reweighting_eval_loss": val_loss})
                     for k, v in losses.items():
-                        wandb.log({f"eval_loss_{k}": v})
+                        if k == "loss": 
+                            continue
+
+                        wandb.log({f"reweighting_eval_loss_{k}": v})
 
                     if val_loss < min_eval_loss:
                         min_eval_loss = val_loss
+                        min_acc = 
                         torch.save(
                             self.reweighting_model.state_dict(), f"{self.save_dir}/reweighting_model_best.pt"
                         )
@@ -212,6 +219,13 @@ class Trainer:
                         print(f"Best model saved at iteration {self.last_save_it + it}")
 
                     it += 1
+
+            reweighting_models.append({
+                "model": self.reweighting_model,
+                "min_eval_loss": min_eval_loss,
+            })
+
+        self.reweighting_model = min(reweighting_models, key=lambda x: x['min_eval_loss'])['model']
 
         return 
 
