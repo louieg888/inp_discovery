@@ -18,8 +18,8 @@ MAX_EVAL_IT = 50
 
 def acc_func(unnormed_vector_for_two_classes, target):
     # we will predict with  Y | r(X) only.
-    y_pred = torch.max(unnormed_vector_for_two_classes, dim=1)[1].view(-1)
-    return (y_pred == target).float().view(-1)
+    y_pred = torch.max(unnormed_vector_for_two_classes.view(-1, 2), dim=1)[1].view(-1)
+    return (y_pred == target.view(-1)).float().view(-1)
 
 class Trainer:
     def __init__(self, config, save_dir, load_path=None, last_save_it=0):
