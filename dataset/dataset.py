@@ -225,7 +225,7 @@ class NuRD(Dataset):
         if self.weighted:
             weights = self.weights[idx].flatten()
             weighted_dist = torch.distributions.Categorical(weights)
-            num_samples = sum(indices) * self.upsample_factor
+            num_samples = len(indices) * self.upsample_factor
             indices = weighted_dist.sample((num_samples,))
 
         x = self.data.iloc[indices]['x'].values
@@ -237,14 +237,17 @@ class NuRD(Dataset):
         knowledge = torch.tensor(list(knowledge), dtype=torch.float32).unsqueeze(-1)
 
         if self.use_optimal_rep: 
-            self.dim_x = 1
             x = x.sum(axis=-1).unsqueeze(-1)
 
         return x, y, knowledge
+
+    def set_use_optimal_rep(self):
+        self.use_optimal_rep = True
+        self.dim_x = 1
         
     def add_weights(self, weights): 
         self.weighted = True
         self.weights = weights
         self.upsample_factor = 10   
-        self.use_optimal_rep = True
+        self.set_use_optimal_rep()
 
