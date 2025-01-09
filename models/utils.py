@@ -1,3 +1,5 @@
+import torch
+
 from torch.distributions import Normal, Categorical
 from torch.distributions.independent import Independent
 
@@ -12,3 +14,5 @@ def IndependentMultinomial(logits):
     if logits.dim() < 1:
         raise ValueError("logits must be at least one-dimensional.")
     return Independent(Categorical(logits=logits), 1)
+            
+

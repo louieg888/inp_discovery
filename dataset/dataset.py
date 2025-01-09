@@ -160,16 +160,60 @@ class Temperatures(Dataset):
 
         return x, y, knowledge
 
+def generate_synthetic_data(a, m=5000):
+    y = torch.randint(low=0, high=2, size=(m, )).long()
+
+    # z_g_y_probs = rho*torch.ones(y.shape)
+    # z_g_y_probs[y==1] = rho
+    # z_g_y_probs[y==0] = 1 - rho
+    # z = torch.bernoulli(z_g_y_probs)
+    z = torch.randn((m, )) + a*(2*y - 1)
+
+    y_polar = 2*y - 1
+    # z_polar = 2*z - 1
+
+    eps_1 = torch.randn((m, ))
+    eps_2 = torch.randn((m, ))
+
+    # assert y.shape == z_polar.shape
+    assert y.shape == eps_2.shape
+
+    # x = torch.cat([(radius*cos_angle).view(-1,1), (radius*sin_angle).view(-1,1)], dim=1)
+    # x= torch.cat([(y - 0.5*z + 0.7*eps_1).view(-1,1,), (y - z + 0.7*eps_2).view(-1,1,)], dim=1)
+    x = torch.cat([(y - z + 3*eps_1).view(-1, 1,),
+                  (y + z + 0.1*eps_2).view(-1, 1,)], dim=1)
+
+    xz = torch.cat([x, z.view(-1, 1)], dim=1)
+    # import pdb; pdb.set_trace()
+
+    return x, y, z
+
 
 class NuRD(Dataset):
-    def __init__(self, split='train', root='./data/nurd', knowledge_type='min_max'):
+    def __init__(self, split='train', root='./data/nurd', knowledge_type='min_max', from_csv=False):
         # add config here
-        self.data = pd.read_csv(f'{root}/nurd.csv', converters={"x": lambda x: list(eval(x))})
-        self.data = self.data[self.data['label'] == split]
+        if from_csv: 
+            self.data = pd.read_csv(f'{root}/nurd.csv', converters={"x": lambda x: list(eval(x))})
+            self.data = self.data[self.data['label'] == split]
+        else: 
+            if split == 'train': 
+                data = generate_synthetic_data(0.5, m=10000)
+            else:
+                data = generate_synthetic_data(-0.9, m=2000)
+
+            x, y, z = data
+            self.data = pd.DataFrame({"x": x, "y": y, "knowledge": z})
+            self.data['task'] = np.floor(self.data.index / 100).astype(int)
+
+            import pdb; pdb.set_trace()
 
         self.dim_x = 2
         self.dim_y = 1
         self.knowledge_input_dim = 1
+
+        # z_min = self.data['x'][0].min(), self.data['x'][1].min()
+        # z_max = self.data['x'][0].min(), self.data['x'][1].min()
+        # x_ax = self.data['x'][0].min(), self.data['x'][1].min()
 
     def __len__(self):
         return len(self.data['task'].unique())

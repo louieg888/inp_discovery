@@ -19,13 +19,14 @@ class SyntheticBernoulliReweightingModel(nn.Module):
         self.hidden_1 = nn.Linear(1, 16)  # Input dimension 1 (z), 16 hidden units
         self.hidden_2 = nn.Linear(16, 1)  # Output dimension 1 (parameter for Bernoulli)
         self.pred_layer = nn.Linear(1, 2)
+        self.sigmoid = nn.Sigmoid()
  
     def forward(self, z):
         # Apply the hidden layer with ReLU activation
-        hidden_1 = F.relu(self.hidden(z))
+        hidden_1 = F.relu(self.hidden_1(z))
         # Apply the output layer and sigmoid activation to get probabilities
         hidden_2 = self.hidden_2(hidden_1)
-        prediction = self.pred_layer(hidden_2)
+        prediction = self.sigmoid(self.pred_layer(hidden_2))
 
         return prediction
 
