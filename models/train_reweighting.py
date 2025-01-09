@@ -208,7 +208,6 @@ class Trainer:
 
                     if val_loss < min_eval_loss:
                         min_eval_loss = val_loss
-                        min_acc = 
                         torch.save(
                             self.reweighting_model.state_dict(), f"{self.save_dir}/reweighting_model_best.pt"
                         )
@@ -226,6 +225,8 @@ class Trainer:
             })
 
         self.reweighting_model = min(reweighting_models, key=lambda x: x['min_eval_loss'])['model']
+
+
 
         return 
 
