@@ -131,7 +131,7 @@ class Trainer:
 
         results = {
             "loss": torch.mean(loss_vec), 
-            "acc": torch.mean(acc_vec)
+            "acc": torch.mean(acc_vec),
         }
 
         print(results)
@@ -155,80 +155,165 @@ class Trainer:
         return results
 
     def train(self):
-        it = 0
-        min_eval_loss = np.inf
-        dataset = self.train_dataloader.dataset
+        # it = 0
+        # min_eval_loss = np.inf
+        # dataset = self.train_dataloader.dataset
 
-        kf = KFold(n_splits=5, shuffle=False)
+        # kf = KFold(n_splits=5, shuffle=False)
 
-        # Create (train, val) splits
-        folds = []
-        for train_idx, val_idx in kf.split(range(len(dataset))):
-            train_subset = torch.utils.data.Subset(dataset, train_idx)
-            val_subset = torch.utils.data.Subset(dataset, val_idx)
+        # # Create (train, val) splits
+        # folds = []
+        # fold_indices = []
+
+        # # generate k folds of data and save in folds
+        # for train_idx, val_idx in kf.split(range(len(dataset))):
+        #     fold_indices.append((train_idx, val_idx))
+        #     train_subset = torch.utils.data.Subset(dataset, train_idx)
+        #     val_subset = torch.utils.data.Subset(dataset, val_idx)
             
-            original_batch_size, self.config.batch_size = self.config.batch_size, 1000
-            train_dataloader = get_dataloader(train_subset, self.config)
-            val_dataloader = get_dataloader(val_subset, self.config)
-            self.config.batch_size = original_batch_size
+        #     original_batch_size, self.config.batch_size = self.config.batch_size, 1000
+        #     train_dataloader = get_dataloader(train_subset, self.config)
+        #     val_dataloader = get_dataloader(val_subset, self.config)
+        #     self.config.batch_size = original_batch_size
 
-            folds.append((train_dataloader, val_dataloader))
+        #     folds.append((train_dataloader, val_dataloader))
 
-        reweighting_models = []
+        # reweighting_models = []
 
-        for (train_dataloader, val_dataloader) in folds:
-            self.reweighting_model = SyntheticBernoulliReweightingModel()
-            self.reweighting_model.to(self.device)
-            self.reweighting_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1e-2)
+        # for (train_dataloader, val_dataloader) in folds:
+        #     self.reweighting_model = SyntheticBernoulliReweightingModel()
+        #     self.reweighting_model.to(self.device)
+        #     self.reweighting_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1e-2)
 
-            for epoch in range(101):
-                for batch in train_dataloader:
-                    self.reweighting_model.train()
-                    self.reweighting_optimizer.zero_grad()
-                    reweighting_results = self.run_reweighting_batch(batch)
-                    acc = reweighting_results['acc']
-                    loss = reweighting_results['loss']
-                    print(f"epoch: {epoch}, acc: {acc}, loss: {loss}")
+        #     for epoch in range(11):
+        #     # for epoch in range(101):
+        #         for batch in train_dataloader:
+        #             self.reweighting_model.train()
+        #             self.reweighting_optimizer.zero_grad()
+        #             reweighting_results = self.run_reweighting_batch(batch)
+        #             acc = reweighting_results['acc']
+        #             loss = reweighting_results['loss']
+        #             print(f"epoch: {epoch}, acc: {acc}, loss: {loss}")
 
-                    loss.retain_grad()
-                    loss.backward()
-                    self.reweighting_optimizer.step()
-                    wandb.log({"reweighting_train_loss": loss})
-                    wandb.log({"reweighting_train_acc": acc})
+        #             loss.retain_grad()
+        #             loss.backward()
+        #             self.reweighting_optimizer.step()
+        #             wandb.log({"reweighting_train_loss": loss})
+        #             wandb.log({"reweighting_train_acc": acc})
 
-                    losses, val_loss = self.eval_weighting(val_dataloader)
-                    mean_eval_loss = np.mean(list(losses.values()))
-                    wandb.log({"reweighting_mean_eval_loss": mean_eval_loss})
-                    wandb.log({"reweighting_eval_loss": val_loss})
-                    for k, v in losses.items():
-                        if k == "loss": 
-                            continue
+        #             losses, val_loss = self.eval_weighting(val_dataloader)
+        #             mean_eval_loss = np.mean(list(losses.values()))
+        #             wandb.log({"reweighting_mean_eval_loss": mean_eval_loss})
+        #             wandb.log({"reweighting_eval_loss": val_loss})
+        #             for k, v in losses.items():
+        #                 if k == "loss": 
+        #                     continue
 
-                        wandb.log({f"reweighting_eval_loss_{k}": v})
+        #                 wandb.log({f"reweighting_eval_loss_{k}": v})
 
-                    if val_loss < min_eval_loss:
-                        min_eval_loss = val_loss
-                        torch.save(
-                            self.reweighting_model.state_dict(), f"{self.save_dir}/reweighting_model_best.pt"
-                        )
-                        torch.save(
-                            self.reweighting_optimizer.state_dict(),
-                            f"{self.save_dir}/reweighting_optim_best.pt" 
-                        )
-                        print(f"Best model saved at iteration {self.last_save_it + it}")
+        #             if val_loss < min_eval_loss:
+        #                 min_eval_loss = val_loss
+        #                 torch.save(
+        #                     self.reweighting_model.state_dict(), f"{self.save_dir}/reweighting_model_best.pt"
+        #                 )
+        #                 torch.save(
+        #                     self.reweighting_optimizer.state_dict(),
+        #                     f"{self.save_dir}/reweighting_optim_best.pt" 
+        #                 )
+        #                 print(f"Best model saved at iteration {self.last_save_it + it}")
 
-                    it += 1
+        #             it += 1
 
-            reweighting_models.append({
-                "model": self.reweighting_model,
-                "min_eval_loss": min_eval_loss,
-            })
+        #     reweighting_models.append({
+        #         "model": self.reweighting_model,
+        #         "min_eval_loss": min_eval_loss,
+        #         "indices": val_idx,
+        #         "val_dataloader": val_dataloader
+        #     })
 
-        self.reweighting_model = min(reweighting_models, key=lambda x: x['min_eval_loss'])['model']
+        # index_weight_mappings = []
+        # # for (reweighted_model, validation_dataloader): 
+        # for model_and_extras in reweighting_models:
+        #     model = model_and_extras['model']
+        #     val_dataloader = model_and_extras['val_dataloader']
+
+        #     for batch in val_dataloader: 
+        #         context, target, knowledge, ids = batch
+        #         x_context, y_context = context
+        #         x_target, y_target = target
+        #         x_context = x_context.to(self.device)
+        #         y_context = y_context.to(self.device)
+        #         x_target = x_target.to(self.device)
+        #         y_target = y_target.to(self.device)
+
+        #         # get_probabilities(reweighted_model, validation_loader)
+        #         ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
+        #         y_hat = model(knowledge)
+        #         acc_vec = acc_func(y_hat, y_target)
+        #         loss_vec = ce_loss(y_hat.view(-1, 2), y_target.long().view(-1)).view(-1)
+
+        #         # map from cross entropy to probabilities
+        #         y_z_prob_vec = (loss_vec * -1).exp()
+        #         y_z_prob_vec.view(y_target.shape)
+
+        #         index_weight_mappings.append({
+        #             "indices": val_dataloader.dataset.indices,
+        #             "y_unnormalized_weights": 1 / y_z_prob_vec
+        #         })
+
+        # # all of this is just to account for potential randomization / shuffling in splits
+        # # so that the weights go to the right place :) 
+        # all_indices = torch.cat([torch.tensor(entry["indices"]) for entry in index_weight_mappings])
+        # all_weights = torch.cat([entry["y_unnormalized_weights"] for entry in index_weight_mappings])
+
+        # sorted_indices, sort_order = torch.sort(all_indices)
+        # sorted_weights = all_weights.view(sorted_indices.shape[0], -1)[sort_order]
+
+        # train_dataloader.dataset.dataset.add_weights(sorted_weights)
+
+        # goaL: 
+        # new dataloader should do two things: 
+            # 1: apply the weights to the context sampling for training data. 
+            # store mapping from idx to probabilities
 
 
+                
 
-        return 
+        # assert that full range has been reached at the end of it all. 
+        
+
+        # todo: make sure you account for p(y) before you leave the synthetic dataset. 
+        # this is technically not necessary since it's constant due to weight normalization and upsampling
+        # create the weighted dataloader with the modified representation
+        # use the modified dataloader to do the rest of the INP process
+
+        # once this works, we need to adapt the INP to learn the representation on the fly. How will this work?
+            # 
+
+
+        """
+        this is the code to get the weights correctly 
+            
+        def predict_proba(loader, model, hparams):
+            # model is dict with one 1 thing
+            # x_representation
+            # pred_layer
+            device = hparams.device
+            # idx_list = []
+            proba_list = []
+
+            for idx, batch in enumerate(loader):
+                x, y, idx = process_erm_batch(batch, hparams, device, phase='val')
+                y_pred_g_z = log_ratio_forward_pass_ermonly(model, x, y)
+                # cross entropy gives NLL, exp of -NLL is probability predicted by the model
+                proba_vec = (F.cross_entropy(y_pred_g_z, y.long().view(-1),
+                            reduction='none').view(-1)*-1).exp()
+                proba_list.append(proba_vec)
+                # idx_list.append(idx)
+
+            return utils.concat(proba_list)  # , utils.concat(idx_list)
+        """
+        # 
 
         it = 0
         min_eval_loss = np.inf

@@ -90,6 +90,18 @@ def get_dataloader(dataset, config):
     )
     return data_loader
 
+def get_dataloader(dataset, config):
+    if config.dataset in ['set-trending-sinusoids', 'set-trending-sinusoids-dist-shift', 'nurd']:
+        collate_knowledge = True
+    else:
+        collate_knowledge = False
+    data_loader = torch.utils.data.DataLoader(
+        dataset, batch_size=config.batch_size,
+        shuffle=True, 
+        collate_fn=lambda batch: collate_fn(batch, config.__dict__, collate_knowledge)
+    )
+    return data_loader
+
 def setup_dataloaders(config):
     extras = {}
     

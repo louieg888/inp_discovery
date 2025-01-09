@@ -209,6 +209,9 @@ class NuRD(Dataset):
         self.dim_y = 1
         self.knowledge_input_dim = 1
 
+        self.weighted = False
+        self.use_optimal_rep = False
+
         # z_min = self.data['x'][0].min(), self.data['x'][1].min()
         # z_max = self.data['x'][0].min(), self.data['x'][1].min()
         # x_ax = self.data['x'][0].min(), self.data['x'][1].min()
@@ -217,12 +220,31 @@ class NuRD(Dataset):
         return len(self.data['task'].unique())
     
     def __getitem__(self, idx):
-        x = self.data[self.data['task'] == idx]['x'].values
-        y = self.data[self.data['task'] == idx]['y'].values
-        knowledge = self.data[self.data['task'] == idx]['z'].values
+        indices = self.data.index[self.data['task'] == idx]
+
+        if self.weighted:
+            weights = self.weights[idx].flatten()
+            weighted_dist = torch.distributions.Categorical(weights)
+            num_samples = sum(indices) * self.upsample_factor
+            indices = weighted_dist.sample((num_samples,))
+
+        x = self.data.iloc[indices]['x'].values
+        y = self.data.iloc[indices]['y'].values
+        knowledge = self.data.iloc[indices]['z'].values
 
         x = torch.tensor(list(x), dtype=torch.float32)
         y = torch.tensor(list(y), dtype=torch.float32).unsqueeze(-1)
         knowledge = torch.tensor(list(knowledge), dtype=torch.float32).unsqueeze(-1)
 
+        if self.use_optimal_rep: 
+            self.dim_x = 1
+            x = x.sum(axis=-1).unsqueeze(-1)
+
         return x, y, knowledge
+        
+    def add_weights(self, weights): 
+        self.weighted = True
+        self.weights = weights
+        self.upsample_factor = 10   
+        self.use_optimal_rep = True
+
