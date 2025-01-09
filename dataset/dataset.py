@@ -202,10 +202,8 @@ class NuRD(Dataset):
                 data = generate_synthetic_data(-0.9, m=2000)
 
             x, y, z = data
-            self.data = pd.DataFrame({"x": x, "y": y, "knowledge": z})
+            self.data = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z})
             self.data['task'] = np.floor(self.data.index / 100).astype(int)
-
-            import pdb; pdb.set_trace()
 
         self.dim_x = 2
         self.dim_y = 1

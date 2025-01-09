@@ -26,7 +26,8 @@ class SyntheticBernoulliReweightingModel(nn.Module):
         hidden_1 = F.relu(self.hidden_1(z))
         # Apply the output layer and sigmoid activation to get probabilities
         hidden_2 = self.hidden_2(hidden_1)
-        prediction = self.sigmoid(self.pred_layer(hidden_2))
+        # prediction = self.sigmoid(self.pred_layer(hidden_2))
+        prediction = self.pred_layer(hidden_2)
 
         return prediction
 

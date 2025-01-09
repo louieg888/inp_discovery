@@ -40,7 +40,7 @@ class Trainer:
 
         self.reweighting_model = SyntheticBernoulliReweightingModel()
         self.reweighting_model.to(self.device)
-        self.reweighting_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1)
+        self.reweighting_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1e-2)
         
         self.loss_func = ELBOLoss(beta=config.beta)
         if load_path is not None:
