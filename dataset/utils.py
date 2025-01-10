@@ -125,9 +125,9 @@ def setup_dataloaders(config):
     elif config.dataset == 'nurd':
         train_dataset = NuRD(split='train', knowledge_type=config.knowledge_type)
         val_dataset = NuRD(split='val', knowledge_type=config.knowledge_type)
-        val_dataset.set_use_optimal_rep()
+        # val_dataset.set_use_optimal_rep()
         test_dataset = NuRD(split='test', knowledge_type=config.knowledge_type)
-        test_dataset.set_use_optimal_rep()
+        # test_dataset.set_use_optimal_rep()
 
     
     else:

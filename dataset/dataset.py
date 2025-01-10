@@ -208,9 +208,11 @@ class NuRD(Dataset):
         self.dim_x = 2
         self.dim_y = 1
         self.knowledge_input_dim = 1
+        self.split = split
 
         self.weighted = False
         self.use_optimal_rep = False
+        self.upsample_factor = 10
 
         # z_min = self.data['x'][0].min(), self.data['x'][1].min()
         # z_max = self.data['x'][0].min(), self.data['x'][1].min()
@@ -227,6 +229,9 @@ class NuRD(Dataset):
             weighted_dist = torch.distributions.Categorical(weights)
             num_samples = len(indices) * self.upsample_factor
             indices = weighted_dist.sample((num_samples,))
+        elif self.split == 'train': # we only do weighting / upsampling on train, so this will make comparison easier
+            indices = indices.repeat(self.upsample_factor)
+
 
         x = self.data.iloc[indices]['x'].values
         y = self.data.iloc[indices]['y'].values
