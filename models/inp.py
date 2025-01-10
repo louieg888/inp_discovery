@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir))))
 from models.modules import XYEncoder, LatentEncoder, Decoder, XEncoder
-from models.utils import MultivariateNormalDiag
+from models.utils import MultivariateNormalDiag=
 
 
 class SyntheticBernoulliReweightingModel(nn.Module):
@@ -30,6 +30,40 @@ class SyntheticBernoulliReweightingModel(nn.Module):
         prediction = self.pred_layer(hidden_2)
 
         return prediction
+    
+class NurdMLP(nn.Module):
+    def __init__(self, input_size, hidden_size, num_hidden_layers, output_size):
+        super(NurdMLP, self).__init__()
+        layers = []
+
+        # Input layer
+        layers.append(nn.Linear(input_size, hidden_size))
+        layers.append(nn.ReLU())
+
+        # Hidden layers
+        for _ in range(num_hidden_layers - 1):
+            layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(nn.ReLU())
+
+        # Output layer
+        layers.append(nn.Linear(hidden_size, output_size))
+
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.network(x)
+
+class VectorRepresentationModel(NurdMLP):
+    def __init__(self, input_size, hidden_size, num_hidden_layers, output_size):
+        super(VectorRepresentationModel, self).__init__(
+            input_size, hidden_size, num_hidden_layers, output_size
+        )
+
+class CriticModel(NurdMLP):
+    def __init__(self, input_size, hidden_size, num_hidden_layers, output_size):
+        super(CriticModel, self).__init__(
+            input_size, hidden_size, num_hidden_layers, output_size
+        )
 
 
 class INP(nn.Module):
