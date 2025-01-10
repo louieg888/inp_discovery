@@ -198,6 +198,8 @@ class NuRD(Dataset):
         else: 
             if split == 'train': 
                 data = generate_synthetic_data(0.5, m=10000)
+            elif split == 'id_val':
+                data = generate_synthetic_data(0.5, m=2000)
             else:
                 data = generate_synthetic_data(-0.9, m=2000)
 

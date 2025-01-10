@@ -51,6 +51,7 @@ def main():
     parser.add_argument('--val-split', type=str, help='Validation split', default='val')
     parser.add_argument('--n-trials', type=int, help='Number of optuna trials', default=1)
     parser.add_argument('--beta', type=float, help='Beta VAE', default=1)
+    parser.add_argument('--reweight', type=bool, help='whether to reweight', default=False)
     
     # dataloader
     parser.add_argument('--dataset', type=str, help='Dataset', default='custom-regression')

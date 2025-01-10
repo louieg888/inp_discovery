@@ -27,7 +27,7 @@ class Trainer:
         self.last_save_it = last_save_it
 
         self.device = config.device
-        self.train_dataloader, self.val_dataloader, _, extras = setup_dataloaders(config)
+        self.train_dataloader, self.val_dataloader, self.id_val_dataloader, _, extras = setup_dataloaders(config)
 
         for k, v in extras.items():
             config.__dict__[k] = v
@@ -155,124 +155,124 @@ class Trainer:
         return results
 
     def train(self):
-        # it = 0
-        # min_eval_loss = np.inf
-        # dataset = self.train_dataloader.dataset
+        it = 0
+        min_eval_loss = np.inf
+        dataset = self.train_dataloader.dataset
 
-        # kf = KFold(n_splits=5, shuffle=False)
+        kf = KFold(n_splits=5, shuffle=False)
 
-        # # Create (train, val) splits
-        # folds = []
-        # fold_indices = []
+        # Create (train, val) splits
+        folds = []
+        fold_indices = []
 
-        # # generate k folds of data and save in folds
-        # for train_idx, val_idx in kf.split(range(len(dataset))):
-        #     fold_indices.append((train_idx, val_idx))
-        #     train_subset = torch.utils.data.Subset(dataset, train_idx)
-        #     val_subset = torch.utils.data.Subset(dataset, val_idx)
+        # generate k folds of data and save in folds
+        for train_idx, val_idx in kf.split(range(len(dataset))):
+            fold_indices.append((train_idx, val_idx))
+            train_subset = torch.utils.data.Subset(dataset, train_idx)
+            val_subset = torch.utils.data.Subset(dataset, val_idx)
             
-        #     original_batch_size, self.config.batch_size = self.config.batch_size, 1000
-        #     train_dataloader = get_dataloader(train_subset, self.config)
-        #     val_dataloader = get_dataloader(val_subset, self.config)
-        #     self.config.batch_size = original_batch_size
+            original_batch_size, self.config.batch_size = self.config.batch_size, 1000
+            train_dataloader = get_dataloader(train_subset, self.config)
+            val_dataloader = get_dataloader(val_subset, self.config)
+            self.config.batch_size = original_batch_size
 
-        #     folds.append((train_dataloader, val_dataloader))
+            folds.append((train_dataloader, val_dataloader))
 
-        # reweighting_models = []
+        reweighting_models = []
 
-        # for (train_dataloader, val_dataloader) in folds:
-        #     self.reweighting_model = SyntheticBernoulliReweightingModel()
-        #     self.reweighting_model.to(self.device)
-        #     self.reweighting_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1e-2)
+        for (train_dataloader, val_dataloader) in folds:
+            self.reweighting_model = SyntheticBernoulliReweightingModel()
+            self.reweighting_model.to(self.device)
+            self.reweighting_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1e-2)
 
-        #     for epoch in range(101):
-        #     # for epoch in range(101):
-        #         for batch in train_dataloader:
-        #             self.reweighting_model.train()
-        #             self.reweighting_optimizer.zero_grad()
-        #             reweighting_results = self.run_reweighting_batch(batch)
-        #             acc = reweighting_results['acc']
-        #             loss = reweighting_results['loss']
-        #             print(f"epoch: {epoch}, acc: {acc}, loss: {loss}")
+            for epoch in range(101):
+            # for epoch in range(101):
+                for batch in train_dataloader:
+                    self.reweighting_model.train()
+                    self.reweighting_optimizer.zero_grad()
+                    reweighting_results = self.run_reweighting_batch(batch)
+                    acc = reweighting_results['acc']
+                    loss = reweighting_results['loss']
+                    print(f"epoch: {epoch}, acc: {acc}, loss: {loss}")
 
-        #             loss.retain_grad()
-        #             loss.backward()
-        #             self.reweighting_optimizer.step()
-        #             wandb.log({"reweighting_train_loss": loss})
-        #             wandb.log({"reweighting_train_acc": acc})
+                    loss.retain_grad()
+                    loss.backward()
+                    self.reweighting_optimizer.step()
+                    # wandb.log({"reweighting_train_loss": loss})
+                    # wandb.log({"reweighting_train_acc": acc})
 
-        #             losses, val_loss = self.eval_weighting(val_dataloader)
-        #             mean_eval_loss = np.mean(list(losses.values()))
-        #             wandb.log({"reweighting_mean_eval_loss": mean_eval_loss})
-        #             wandb.log({"reweighting_eval_loss": val_loss})
-        #             for k, v in losses.items():
-        #                 if k == "loss": 
-        #                     continue
+                    losses, val_loss = self.eval_weighting(val_dataloader)
+                    mean_eval_loss = np.mean(list(losses.values()))
+                    # wandb.log({"reweighting_mean_eval_loss": mean_eval_loss})
+                    # wandb.log({"reweighting_eval_loss": val_loss})
+                    for k, v in losses.items():
+                        if k == "loss": 
+                            continue
 
-        #                 wandb.log({f"reweighting_eval_loss_{k}": v})
+                        # wandb.log({f"reweighting_eval_loss_{k}": v})
 
-        #             if val_loss < min_eval_loss:
-        #                 min_eval_loss = val_loss
-        #                 torch.save(
-        #                     self.reweighting_model.state_dict(), f"{self.save_dir}/reweighting_model_best.pt"
-        #                 )
-        #                 torch.save(
-        #                     self.reweighting_optimizer.state_dict(),
-        #                     f"{self.save_dir}/reweighting_optim_best.pt" 
-        #                 )
-        #                 print(f"Best model saved at iteration {self.last_save_it + it}")
+                    if val_loss < min_eval_loss:
+                        min_eval_loss = val_loss
+                        torch.save(
+                            self.reweighting_model.state_dict(), f"{self.save_dir}/reweighting_model_best.pt"
+                        )
+                        torch.save(
+                            self.reweighting_optimizer.state_dict(),
+                            f"{self.save_dir}/reweighting_optim_best.pt" 
+                        )
+                        print(f"Best model saved at iteration {self.last_save_it + it}")
 
-        #             it += 1
+                    it += 1
 
-        #     reweighting_models.append({
-        #         "model": self.reweighting_model,
-        #         "min_eval_loss": min_eval_loss,
-        #         "indices": val_idx,
-        #         "val_dataloader": val_dataloader
-        #     })
+            reweighting_models.append({
+                "model": self.reweighting_model,
+                "min_eval_loss": min_eval_loss,
+                "indices": val_idx,
+                "val_dataloader": val_dataloader
+            })
 
-        # index_weight_mappings = []
-        # # for (reweighted_model, validation_dataloader): 
-        # for model_and_extras in reweighting_models:
-        #     model = model_and_extras['model']
-        #     val_dataloader = model_and_extras['val_dataloader']
+        index_weight_mappings = []
+        # for (reweighted_model, validation_dataloader): 
+        for model_and_extras in reweighting_models:
+            model = model_and_extras['model']
+            val_dataloader = model_and_extras['val_dataloader']
 
-        #     for batch in val_dataloader: 
-        #         context, target, knowledge, ids = batch
-        #         x_context, y_context = context
-        #         x_target, y_target = target
-        #         x_context = x_context.to(self.device)
-        #         y_context = y_context.to(self.device)
-        #         x_target = x_target.to(self.device)
-        #         y_target = y_target.to(self.device)
+            for batch in val_dataloader: 
+                context, target, knowledge, ids = batch
+                x_context, y_context = context
+                x_target, y_target = target
+                x_context = x_context.to(self.device)
+                y_context = y_context.to(self.device)
+                x_target = x_target.to(self.device)
+                y_target = y_target.to(self.device)
 
-        #         # get_probabilities(reweighted_model, validation_loader)
-        #         ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
-        #         y_hat = model(knowledge)
-        #         acc_vec = acc_func(y_hat, y_target)
-        #         loss_vec = ce_loss(y_hat.view(-1, 2), y_target.long().view(-1)).view(-1)
+                # get_probabilities(reweighted_model, validation_loader)
+                ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
+                y_hat = model(knowledge)
+                acc_vec = acc_func(y_hat, y_target)
+                loss_vec = ce_loss(y_hat.view(-1, 2), y_target.long().view(-1)).view(-1)
 
-        #         # map from cross entropy to probabilities
-        #         y_z_prob_vec = (loss_vec * -1).exp()
-        #         y_z_prob_vec.view(y_target.shape)
+                # map from cross entropy to probabilities
+                y_z_prob_vec = (loss_vec * -1).exp()
+                y_z_prob_vec.view(y_target.shape)
 
-        #         index_weight_mappings.append({
-        #             "indices": val_dataloader.dataset.indices,
-        #             "y_unnormalized_weights": 1 / y_z_prob_vec
-        #         })
+                index_weight_mappings.append({
+                    "indices": val_dataloader.dataset.indices,
+                    "y_unnormalized_weights": 1 / y_z_prob_vec
+                })
 
-        # # all of this is just to account for potential randomization / shuffling in splits
-        # # so that the weights go to the right place :) 
-        # all_indices = torch.cat([torch.tensor(entry["indices"]) for entry in index_weight_mappings])
-        # all_weights = torch.cat([entry["y_unnormalized_weights"] for entry in index_weight_mappings])
+        # all of this is just to account for potential randomization / shuffling in splits
+        # so that the weights go to the right place :) 
+        all_indices = torch.cat([torch.tensor(entry["indices"]) for entry in index_weight_mappings])
+        all_weights = torch.cat([entry["y_unnormalized_weights"] for entry in index_weight_mappings])
 
-        # sorted_indices, sort_order = torch.sort(all_indices)
-        # sorted_weights = all_weights.view(sorted_indices.shape[0], -1)[sort_order]
+        sorted_indices, sort_order = torch.sort(all_indices)
+        sorted_weights = all_weights.view(sorted_indices.shape[0], -1)[sort_order]
 
-        # torch.save(sorted_weights, "saves/weights.pt")
+        torch.save(sorted_weights, "saves/weights.pt")
 
-        # train_dataloader.dataset.dataset.add_weights(sorted_weights)
-        # val_dataloader.dataset.dataset.set_use_optimal_rep()
+        train_dataloader.dataset.dataset.add_weights(sorted_weights)
+        val_dataloader.dataset.dataset.set_use_optimal_rep()
 
         # goaL: 
         # new dataloader should do two things: 
@@ -312,29 +312,30 @@ class Trainer:
                 wandb.log({"train_kl": kl})
 
                 if it % EVAL_ITER == 0 and it > 0:
-                    losses, val_loss = self.eval()
-                    mean_eval_loss = np.mean(list(losses.values()))
-                    wandb.log({"mean_eval_loss": mean_eval_loss})
-                    wandb.log({"eval_loss": val_loss})
-                    for k, v in losses.items():
-                        wandb.log({f"eval_loss_{k}": v})
+                    for val_name, val_set in zip(("ood", "id"), (self.val_dataloader, self.id_val_dataloader)):
+                        losses, val_loss = self.eval(val_set)
+                        mean_eval_loss = np.mean(list(losses.values()))
+                        wandb.log({f"{val_name}_mean_eval_loss": mean_eval_loss})
+                        wandb.log({f"{val_name}_eval_loss": val_loss})
+                        for k, v in losses.items():
+                            wandb.log({f"{val_name}_eval_loss_{k}": v})
 
-                    if val_loss < min_eval_loss and it > 1500:
-                        min_eval_loss = val_loss
-                        torch.save(
-                            self.model.state_dict(), f"{self.save_dir}/model_best.pt"
-                        )
-                        torch.save(
-                            self.optimizer.state_dict(),
-                             f"{self.save_dir}/optim_best.pt" 
-                        )
-                        print(f"Best model saved at iteration {self.last_save_it + it}")
+                        if val_name == "id" and val_loss < min_eval_loss and it > 1500:
+                            min_eval_loss = val_loss
+                            torch.save(
+                                self.model.state_dict(), f"{self.save_dir}/model_best.pt"
+                            )
+                            torch.save(
+                                self.optimizer.state_dict(),
+                                f"{self.save_dir}/optim_best.pt" 
+                            )
+                            print(f"Best model saved at iteration {self.last_save_it + it}")
 
                 it += 1
 
         return min_eval_loss
 
-    def eval(self):
+    def eval(self, val_dataloader):
         print('Evaluating')
         it = 0
         self.model.eval()
@@ -345,7 +346,7 @@ class Trainer:
             losses_dict = dict(zip(loss_num_context, [[] for _ in loss_num_context]))
 
             val_losses = []
-            for batch in self.val_dataloader:
+            for batch in val_dataloader:
                 for num_context in loss_num_context:
                     results = self.run_batch_eval(batch, num_context=num_context)
                     loss = results['loss']
@@ -359,6 +360,29 @@ class Trainer:
                     break
             losses_dict = {k: np.mean(v) for k, v in losses_dict.items()}
             val_loss = np.mean(val_losses)
+
+
+
+            # loss_num_context = [3, 5, 10]
+            # if self.config.min_num_context == 0:
+            #     loss_num_context = [0] + loss_num_context
+            # losses_dict = dict(zip(loss_num_context, [[] for _ in loss_num_context]))
+
+            # val_losses = []
+            # for batch in self.val_dataloader:
+            #     for num_context in loss_num_context:
+            #         results = self.run_batch_eval(batch, num_context=num_context)
+            #         loss = results['loss']
+            #         val_results = self.run_batch_train(batch)
+            #         val_loss = val_results['loss']
+            #         losses_dict[num_context].append(loss.to("cpu").item())
+            #         val_losses.append(val_loss.to("cpu").item())
+                    
+            #     it += 1
+            #     if it > MAX_EVAL_IT:
+            #         break
+            # losses_dict = {k: np.mean(v) for k, v in losses_dict.items()}
+            # val_loss = np.mean(val_losses)
             
         return losses_dict, val_loss
 
