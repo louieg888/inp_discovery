@@ -207,7 +207,8 @@ class NuRD(Dataset):
             self.data = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z})
             self.data['task'] = np.floor(self.data.index / 100).astype(int)
 
-        self.dim_x = 2
+        #todo: fix this so that the dimension is "real" (pre representation)
+        self.dim_x = 1
         self.dim_y = 1
         self.knowledge_input_dim = 1
         self.split = split

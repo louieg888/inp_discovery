@@ -292,9 +292,9 @@ class Trainer:
 
         torch.save(sorted_weights, "saves/weights.pt")
 
-        self.train_dataloader.dataset.dataset.add_weights(sorted_weights)
-        if not self.critic_dataloader.dataset.dataset.weighted:
-            self.critic_dataloader.dataset.dataset.add_weights(sorted_weights)
+        self.train_dataloader.dataset.add_weights(sorted_weights)
+        if not self.critic_dataloader.dataset.weighted:
+            self.critic_dataloader.dataset.add_weights(sorted_weights)
         # val_dataloader.dataset.dataset.set_use_optimal_rep()
 
         ############
@@ -305,9 +305,9 @@ class Trainer:
 
         self.z_representation_model = VectorRepresentationModel(input_size=1, hidden_size=16, num_hidden_layers=1, output_size=1)
         self.x_representation_model = VectorRepresentationModel(input_size=2, hidden_size=16, num_hidden_layers=1, output_size=1)
-        self.critic_model = CriticModel(input_size=3, hidden_size=16, num_hidden_layers=2, output_size=1)
+        self.critic_model = CriticModel(input_size=3, hidden_size=16, num_hidden_layers=2, output_size=2)
 
-        self.critic_optimizer = torch.optim.Adam(list(self.critic_model.parameters, self.z_representation_model.parameters()), lr=config.lr)
+        self.critic_optimizer = torch.optim.Adam( list(self.critic_model.parameters()) + list(self.z_representation_model.parameters()), lr=config.lr)
         self.x_representation_optimizer = torch.optim.Adam(self.x_representation_model.parameters(), lr=config.lr)
 
         # goaL: 
@@ -349,7 +349,7 @@ class Trainer:
                 loss = results['loss']
                 kl = results['kl']
                 negative_ll = results['negative_ll']
-                info_loss = results['info_loss']
+                info_loss = results['information_loss']
 
                 total_loss = loss + info_loss
 
@@ -405,7 +405,7 @@ class Trainer:
                 # don't forget to set models apprpriately to eval and stuff
                 
                 self.set_critic_training()
-                for _ in range(len(8)):
+                for _ in range(8):
                     try: 
                         inner_batch = next(self.critic_dataloader_iterator)
                     except StopIteration: 
@@ -466,25 +466,31 @@ class Trainer:
 
         x, y, z = x_target, y_target, knowledge
 
-        # Representations
+        # representations
         rep_x = self.x_representation_model(x)
         rep_z = self.z_representation_model(z)
-        shuffled_rep_z = rep_z[torch.randperm(rep_z.size(0))]
-
-        # Critic model predictions
-        logit_real_given_xy_real_z = self.critic_model(rep_x, y, rep_z)
-        logit_real_given_xy_fake_z = self.critic_model(rep_x, y, shuffled_rep_z)
+        shuffled_rep_z = rep_z[:, torch.randperm(rep_z.size(1))]
+        # critic model predictions
+        logit_real_given_xy_real_z = self.critic_model(torch.cat((rep_x, y, rep_z), axis=2)).view(-1, 2)
+        logit_real_given_xy_fake_z = self.critic_model(torch.cat((rep_x, y, shuffled_rep_z), axis=2)).view(-1, 2)
 
         # Labels for real and fake data
-        joint_labels = torch.ones(logit_real_given_xy_real_z.size(0), dtype=torch.long).to(self.device)
-        marginal_labels = torch.zeros(logit_real_given_xy_fake_z.size(0), dtype=torch.long).to(self.device)
+        # note: correct probability logit is therefore in index 1, ie [0 1]
+        joint_labels = torch.ones([logit_real_given_xy_real_z.size(0), ], dtype=torch.long).to(self.device)
+        marginal_labels = torch.zeros([logit_real_given_xy_fake_z.size(0), ], dtype=torch.long).to(self.device)
 
         # Losses for real and fake data
         loss_real = F.cross_entropy(logit_real_given_xy_real_z, joint_labels)
         loss_fake = F.cross_entropy(logit_real_given_xy_fake_z, marginal_labels)
 
         # Combine losses
+        # todo: add in critic loss when you get here.
         critic_loss = 0.5 * (loss_real + loss_fake)
+        critic_real_preds = torch.softmax(logit_real_given_xy_real_z, dim=1).argmax(axis=1)
+        critic_fake_preds = torch.softmax(logit_real_given_xy_fake_z, dim=1).argmax(axis=1)
+        critic_real_acc = (critic_real_preds == joint_labels).sum() / joint_labels.size(0)
+        critic_fake_acc = (critic_fake_preds == marginal_labels).sum() / marginal_labels.size(0)
+        critic_acc = (critic_real_acc + critic_fake_acc) / 2.
 
         # Information loss
         log_p_real_given_xy_real_z = torch.log_softmax(logit_real_given_xy_real_z, dim=1)[:, 1]
@@ -492,8 +498,9 @@ class Trainer:
         information_loss = log_p_real_given_xy_real_z - log_p_fake_given_xy_real_z
 
         losses = {
-            "critic_loss": critic_loss,
-            "information_loss": information_loss,
+            "critic_loss": critic_loss.sum(),
+            "critic_acc": critic_acc,
+            "information_loss": torch.abs(information_loss.sum()),
             **pred_losses
         }
 
