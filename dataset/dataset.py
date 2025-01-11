@@ -160,7 +160,7 @@ class Temperatures(Dataset):
 
         return x, y, knowledge
 
-def generate_synthetic_data(a, m=5000, b=1, c=0):
+def generate_synthetic_data(a, m=5000, b=0, c=1):
     y = torch.randint(low=0, high=2, size=(m, )).long()
 
     # z_g_y_probs = rho*torch.ones(y.shape)
@@ -214,8 +214,8 @@ class NuRD(Dataset):
 
             tasks = []
             for i in range(100): 
+                b, c = self.data_generating_params[i]
                 if split == 'train': 
-                    b, c = self.data_generating_params[i]
                     data = generate_synthetic_data(0.5, m=100, b=b, c=c)
                 elif split == 'id_val':
                     data = generate_synthetic_data(0.5, m=20, b=b, c=c)
@@ -226,13 +226,11 @@ class NuRD(Dataset):
             dfs = []
             for task_idx, task in enumerate(tasks): 
                 b, c, (x, y, z) = task
-                df = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z, "knowledge": list(torch.tensor([b, c]).repeat(100, 1))})
+                df = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z, })
                 df['task'] = task_idx
                 dfs.append(df)
                 # self.data['task'] = np.floor(self.data.index / 100).astype(int)
             self.data = pd.concat(dfs)
-
-        self.knowledge_type = knowledge_type
 
         if knowledge_type == "z":
             if task == "single": 
@@ -241,7 +239,7 @@ class NuRD(Dataset):
             self.knowledge_input_dim = 3
 
         #todo: fix this so that the dimension is "real" (pre representation)
-        self.dim_x = 1
+        self.dim_x = 2
         self.dim_y = 1
         self.split = split
 

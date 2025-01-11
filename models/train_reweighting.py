@@ -152,7 +152,7 @@ class Trainer:
 
         #todo: add another part of the dataloader to extract spurious correlations.
         ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
-        y_hat = self.reweighting_model(knowledge)
+        y_hat = self.reweighting_model(ids['extras']['z'])
         acc_vec = acc_func(y_hat, y_target)
         loss_vec = ce_loss(y_hat.view(-1, 2), y_target.long().view(-1)).view(-1)
 
@@ -437,7 +437,7 @@ class Trainer:
         x_target = x_target.to(self.device)
         y_target = y_target.to(self.device)
 
-        x, y, z = x_target, y_target, knowledge
+        x, y, z = x_target, y_target, ids['z']
 
         # representations
         rep_x = self.x_representation_model(x)

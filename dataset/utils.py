@@ -9,7 +9,7 @@ def collate_fn(batch, kwargs, collate_knowledge=True):
     num_context_ls = list(range(kwargs['min_num_context'], kwargs['max_num_context']))
     num_context = np.random.choice(num_context_ls)
 
-    x, y, knowledge = zip(*batch)
+    x, y, knowledge, z = zip(*batch)
     num_samples = x[0].shape[0]
     x_size = x[0].shape[1]
     y_size = y[0].shape[1]
@@ -66,9 +66,11 @@ def collate_fn(batch, kwargs, collate_knowledge=True):
         context_idx[i, :, :] = torch.tensor(sample_context).unsqueeze(-1)
 
     
+    z = torch.stack(z)
     extras = {
         'x': x,
         'y': y,
+        'z': z,
         'context_idx': context_idx
     }
 
@@ -123,10 +125,10 @@ def setup_dataloaders(config):
         test_dataset = Temperatures(split='test', knowledge_type=config.knowledge_type)
 
     elif config.dataset == 'nurd':
-        train_dataset = NuRD(split='train', knowledge_type=config.knowledge_type)
-        id_val_dataset = NuRD(split='id_val', knowledge_type=config.knowledge_type)
-        val_dataset = NuRD(split='val', knowledge_type=config.knowledge_type)
-        test_dataset = NuRD(split='test', knowledge_type=config.knowledge_type)
+        train_dataset = NuRD(split='train', knowledge_type=config.knowledge_type, task="single")
+        id_val_dataset = NuRD(split='id_val', knowledge_type=config.knowledge_type, task="single")
+        val_dataset = NuRD(split='val', knowledge_type=config.knowledge_type, task="single")
+        test_dataset = NuRD(split='test', knowledge_type=config.knowledge_type, task="single")
 
         # id_val_dataset.set_use_optimal_rep()
         # val_dataset.set_use_optimal_rep()
