@@ -253,8 +253,11 @@ class NuRD(Dataset):
         self.dim_x = 1
         
     def add_weights(self, weights): 
+        if self.weighted: 
+            raise Exception("This dataset already has a set of weights.")
+
         self.weighted = True
         self.weights = weights
         self.upsample_factor = 10   
-        self.set_use_optimal_rep()
+        # self.set_use_optimal_rep()
 

@@ -1,5 +1,6 @@
 from sklearn.model_selection import KFold
 import torch
+import torch.nn.functional as F
 import wandb
 import numpy as np
 import os
@@ -9,7 +10,7 @@ import optuna
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir))))
 from dataset.utils import get_dataloader, setup_dataloaders
-from models.inp import INP, SyntheticBernoulliReweightingModel
+from models.models import INP, CriticModel, SyntheticBernoulliReweightingModel, VectorRepresentationModel
 from models.loss import ELBOLoss
 
 EVAL_ITER = 50
@@ -27,7 +28,7 @@ class Trainer:
         self.last_save_it = last_save_it
 
         self.device = config.device
-        self.train_dataloader, self.val_dataloader, self.id_val_dataloader, _, extras = setup_dataloaders(config)
+        self.train_dataloader, self.critic_dataloader, self.val_dataloader, self.id_val_dataloader, _, extras = setup_dataloaders(config)
 
         for k, v in extras.items():
             config.__dict__[k] = v
@@ -36,7 +37,7 @@ class Trainer:
 
         self.model = INP(config)
         self.model.to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.lr)
+        self.pred_optimizer = torch.optim.Adam(self.model.parameters(), lr=config.lr)
 
         
         self.loss_func = ELBOLoss(beta=config.beta)
@@ -74,6 +75,10 @@ class Trainer:
         if self.config.sort_context:
             x_context, indices = torch.sort(x_context, dim=1)
             y_context = torch.gather(y_context, 1, indices)
+
+        #todo: only for rep
+        x_context, x_target = self.x_representation_model(x_context), self.x_representation_model(x_target)
+        
         if self.config.use_knowledge:
             output = self.model(
                 x_context,
@@ -86,6 +91,8 @@ class Trainer:
             output = self.model(
                 x_context, y_context, x_target, y_target=y_target, knowledge=None
             )
+
+        # when you get here, figure out how to get accuracy in.
         loss, kl, negative_ll = self.loss_func(output, y_target)
 
         results = {
@@ -154,6 +161,20 @@ class Trainer:
 
         return results
 
+    def set_critic_training(self):
+        self.critic_model.train()
+        self.z_representation_model.train()
+
+        self.x_representation_model.eval()
+        self.model.eval()
+    
+    def set_pred_training(self):
+        self.critic_model.eval()
+        self.z_representation_model.eval()
+
+        self.x_representation_model.train()
+        self.model.train()
+
     def train(self):
         it = 0
         min_eval_loss = np.inf
@@ -183,13 +204,13 @@ class Trainer:
         for (train_dataloader, val_dataloader) in folds:
             self.reweighting_model = SyntheticBernoulliReweightingModel()
             self.reweighting_model.to(self.device)
-            self.reweighting_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1e-2)
+            self.reweighting_pred_optimizer = torch.optim.Adam(self.reweighting_model.parameters(), lr=1e-2)
 
             for epoch in range(101):
             # for epoch in range(101):
                 for batch in train_dataloader:
                     self.reweighting_model.train()
-                    self.reweighting_optimizer.zero_grad()
+                    self.reweighting_pred_optimizer.zero_grad()
                     reweighting_results = self.run_reweighting_batch(batch)
                     acc = reweighting_results['acc']
                     loss = reweighting_results['loss']
@@ -197,7 +218,7 @@ class Trainer:
 
                     loss.retain_grad()
                     loss.backward()
-                    self.reweighting_optimizer.step()
+                    self.reweighting_pred_optimizer.step()
                     # wandb.log({"reweighting_train_loss": loss})
                     # wandb.log({"reweighting_train_acc": acc})
 
@@ -217,7 +238,7 @@ class Trainer:
                             self.reweighting_model.state_dict(), f"{self.save_dir}/reweighting_model_best.pt"
                         )
                         torch.save(
-                            self.reweighting_optimizer.state_dict(),
+                            self.reweighting_pred_optimizer.state_dict(),
                             f"{self.save_dir}/reweighting_optim_best.pt" 
                         )
                         print(f"Best model saved at iteration {self.last_save_it + it}")
@@ -271,8 +292,23 @@ class Trainer:
 
         torch.save(sorted_weights, "saves/weights.pt")
 
-        train_dataloader.dataset.dataset.add_weights(sorted_weights)
-        val_dataloader.dataset.dataset.set_use_optimal_rep()
+        self.train_dataloader.dataset.dataset.add_weights(sorted_weights)
+        if not self.critic_dataloader.dataset.dataset.weighted:
+            self.critic_dataloader.dataset.dataset.add_weights(sorted_weights)
+        # val_dataloader.dataset.dataset.set_use_optimal_rep()
+
+        ############
+        #
+        # end of weighting
+        #
+        ###########3
+
+        self.z_representation_model = VectorRepresentationModel(input_size=1, hidden_size=16, num_hidden_layers=1, output_size=1)
+        self.x_representation_model = VectorRepresentationModel(input_size=2, hidden_size=16, num_hidden_layers=1, output_size=1)
+        self.critic_model = CriticModel(input_size=3, hidden_size=16, num_hidden_layers=2, output_size=1)
+
+        self.critic_optimizer = torch.optim.Adam(list(self.critic_model.parameters, self.z_representation_model.parameters()), lr=config.lr)
+        self.x_representation_optimizer = torch.optim.Adam(self.x_representation_model.parameters(), lr=config.lr)
 
         # goaL: 
         # new dataloader should do two things: 
@@ -296,20 +332,36 @@ class Trainer:
 
         it = 0
         min_eval_loss = np.inf
+        self.critic_dataloader_iterator = iter(self.critic_dataloader)
+
         for epoch in range(self.num_epochs + 1):
             #self.scheduler.step()
+
+            # this is the outer training loop
             for batch in self.train_dataloader:
-                self.model.train()
-                self.optimizer.zero_grad()
-                results = self.run_batch_train(batch)
+                # don't forget to set models apprpriately to eval and stuff
+                self.set_pred_training()
+
+                self.pred_optimizer.zero_grad()
+                self.x_representation_optimizer.zero_grad()
+
+                results = self.get_all_losses(batch)
                 loss = results['loss']
                 kl = results['kl']
                 negative_ll = results['negative_ll']
-                loss.backward()
-                self.optimizer.step()
+                info_loss = results['info_loss']
+
+                total_loss = loss + info_loss
+
+                total_loss.backward()
+
+                self.pred_optimizer.step()
+                self.x_representation_optimizer.step()
+
                 wandb.log({"train_loss": loss})
                 wandb.log({"train_negative_ll": negative_ll})
                 wandb.log({"train_kl": kl})
+                wandb.log({"info_loss": info_loss})
 
                 if it % EVAL_ITER == 0 and it > 0:
                     for val_name, val_set in zip(("ood", "id"), (self.val_dataloader, self.id_val_dataloader)):
@@ -326,14 +378,127 @@ class Trainer:
                                 self.model.state_dict(), f"{self.save_dir}/model_best.pt"
                             )
                             torch.save(
-                                self.optimizer.state_dict(),
-                                f"{self.save_dir}/optim_best.pt" 
+                                self.x_representation_model.state_dict(), f"{self.save_dir}/x_representation_model_best.pt"
                             )
+                            torch.save(
+                                self.z_representation_model.state_dict(), f"{self.save_dir}/z_representation_model_best.pt"
+                            )
+                            torch.save(
+                                self.critic_model.state_dict(), f"{self.save_dir}/critic_model_best.pt"
+                            )
+                            torch.save(
+                                self.pred_optimizer.state_dict(),
+                                f"{self.save_dir}/pred_optim_best.pt" 
+                            )
+                            torch.save(
+                                self.x_representation_optimizer.state_dict(),
+                                f"{self.save_dir}/x_representation_optim_best.pt" 
+                            )
+                            torch.save(
+                                self.critic_optimizer.state_dict(),
+                                f"{self.save_dir}/critic_optim_best.pt" 
+                            )
+                            
                             print(f"Best model saved at iteration {self.last_save_it + it}")
+
+
+                # don't forget to set models apprpriately to eval and stuff
+                
+                self.set_critic_training()
+                for _ in range(len(8)):
+                    try: 
+                        inner_batch = next(self.critic_dataloader_iterator)
+                    except StopIteration: 
+                        self.critic_dataloader_iterator = iter(self.critic_dataloader)
+                        inner_batch = next(self.critic_dataloader_iterator)
+
+                    self.critic_optimizer.zero_grad()
+
+                    losses = self.get_all_losses(inner_batch)
+                    critic_loss = losses['critic_loss'] 
+
+                    wandb.log({"critic_loss": critic_loss.item()})
+                    # Backpropagation and optimizer step
+                    critic_loss.backward()
+                    self.critic_optimizer.step()
+
+                    # Optionally log the losses (e.g., using wandb or print statements)
+
+                # this is the inner training loop
+
+                # for num_critic_batches (8 i think) in critic_loader 
+                    # self.critic_optimizer.zero_grad()
+
+                    # get batch (critic)
+                    # x, y, z = batch
+                    
+                    # rep_x, rep_z, shuffled_rep_z = representation(x), representation(z), shuffled(representation(z))
+                    # logit_real_given_xy_real_z = self.critic_model(rep_x, y, rep_z)
+                    # logit_real_given_xy_fake_z = self.critic_model(rep_x, y, shuffled_rep_z)
+
+                    # # these should be for the "real" data
+                    # joint_labels = torch.ones(logit_real_given_xy_real_z.size())
+                    # # these should be for the "fake" data 
+                    # marginal_labels = torch.ones(logit_real_given_xy_real_z.size())
+
+                    # loss_real = F.cross_entropy(p_real_given_xy_real_z, joint_labels)
+                    # loss_fake = F.cross_entropy(p_real_given_xy_real_z, joint_labels)
+                    # critic_loss = 0.5 * (loss_real + loss_fake)
+
+                    # log_p_real_given_xy_real_z = torch.log_softmax(logit_real_given_xy_real_z, dim=1)[:, 1]
+                    # log_p_fake_given_xy_real_z = torch.log_softmax(logit_real_given_xy_real_z, dim=1)[:, 0]
+                    # information_loss = log_p_real_given_xy_real_z - log_p_fake_given_xy_real_z
 
                 it += 1
 
         return min_eval_loss
+
+    def get_all_losses(self, batch):
+        pred_losses = self.run_batch_train(batch)
+
+        context, target, knowledge, ids = batch
+        x_context, y_context = context
+        x_target, y_target = target
+        x_context = x_context.to(self.device)
+        y_context = y_context.to(self.device)
+        x_target = x_target.to(self.device)
+        y_target = y_target.to(self.device)
+
+        x, y, z = x_target, y_target, knowledge
+
+        # Representations
+        rep_x = self.x_representation_model(x)
+        rep_z = self.z_representation_model(z)
+        shuffled_rep_z = rep_z[torch.randperm(rep_z.size(0))]
+
+        # Critic model predictions
+        logit_real_given_xy_real_z = self.critic_model(rep_x, y, rep_z)
+        logit_real_given_xy_fake_z = self.critic_model(rep_x, y, shuffled_rep_z)
+
+        # Labels for real and fake data
+        joint_labels = torch.ones(logit_real_given_xy_real_z.size(0), dtype=torch.long).to(self.device)
+        marginal_labels = torch.zeros(logit_real_given_xy_fake_z.size(0), dtype=torch.long).to(self.device)
+
+        # Losses for real and fake data
+        loss_real = F.cross_entropy(logit_real_given_xy_real_z, joint_labels)
+        loss_fake = F.cross_entropy(logit_real_given_xy_fake_z, marginal_labels)
+
+        # Combine losses
+        critic_loss = 0.5 * (loss_real + loss_fake)
+
+        # Information loss
+        log_p_real_given_xy_real_z = torch.log_softmax(logit_real_given_xy_real_z, dim=1)[:, 1]
+        log_p_fake_given_xy_real_z = torch.log_softmax(logit_real_given_xy_real_z, dim=1)[:, 0]
+        information_loss = log_p_real_given_xy_real_z - log_p_fake_given_xy_real_z
+
+        losses = {
+            "critic_loss": critic_loss,
+            "information_loss": information_loss,
+            **pred_losses
+        }
+
+        return losses
+
 
     def eval(self, val_dataloader):
         print('Evaluating')
