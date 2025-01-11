@@ -160,7 +160,7 @@ class Temperatures(Dataset):
 
         return x, y, knowledge
 
-def generate_synthetic_data(a, m=5000):
+def generate_synthetic_data(a, m=5000, b=1, c=0):
     y = torch.randint(low=0, high=2, size=(m, )).long()
 
     # z_g_y_probs = rho*torch.ones(y.shape)
@@ -180,37 +180,74 @@ def generate_synthetic_data(a, m=5000):
 
     # x = torch.cat([(radius*cos_angle).view(-1,1), (radius*sin_angle).view(-1,1)], dim=1)
     # x= torch.cat([(y - 0.5*z + 0.7*eps_1).view(-1,1,), (y - z + 0.7*eps_2).view(-1,1,)], dim=1)
-    x = torch.cat([(y - z + 3*eps_1).view(-1, 1,),
-                  (y + z + 0.1*eps_2).view(-1, 1,)], dim=1)
-
-    xz = torch.cat([x, z.view(-1, 1)], dim=1)
-    # import pdb; pdb.set_trace()
+    x = torch.cat([(b + c * y - z + 3*eps_1).view(-1, 1,),
+                  (b + c * y + z + 0.1*eps_2).view(-1, 1,)], dim=1)
 
     return x, y, z
 
 
 class NuRD(Dataset):
-    def __init__(self, split='train', root='./data/nurd', knowledge_type='min_max', from_csv=False):
+    def __init__(self, split='train', root='./data/nurd', knowledge_type=None, from_csv=False, task="single"):
+
+        """
+        Task types: 
+            - single: the traditional NuRD task. Meta-Learning over a nuisance family of distributions.
+            - multi: the NP task. Data is generated via )b + cy + z, small_var) and (b + cy - z, large_var)
+        Knowledge type: 
+            - z: add in knowledge of the z variables. 
+            - "none": no knowledge. 
+            - "b": just b. 
+            - "c": just c. 
+            - "bc": both.
+        """
+        self.knowledge_type = knowledge_type
+
         # add config here
         if from_csv: 
             self.data = pd.read_csv(f'{root}/nurd.csv', converters={"x": lambda x: list(eval(x))})
             self.data = self.data[self.data['label'] == split]
         else: 
-            if split == 'train': 
-                data = generate_synthetic_data(0.5, m=10000)
-            elif split == 'id_val':
-                data = generate_synthetic_data(0.5, m=2000)
-            else:
-                data = generate_synthetic_data(-0.9, m=2000)
+            if task == "multi": 
+                self.data_generating_params = (torch.rand(100, 2) - 1) * 2
+            else: 
+                self.data_generating_params = torch.tensor([0, 1]).repeat(100,1)
 
-            x, y, z = data
-            self.data = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z})
-            self.data['task'] = np.floor(self.data.index / 100).astype(int)
+            tasks = []
+            for i in range(100): 
+                if split == 'train': 
+                    b, c = self.data_generating_params[i]
+                    data = generate_synthetic_data(0.5, m=100, b=b, c=c)
+                elif split == 'id_val':
+                    data = generate_synthetic_data(0.5, m=20, b=b, c=c)
+                else:
+                    data = generate_synthetic_data(-0.9, m=20, b=b, c=c)
+                tasks.append((b, c, data))
+
+            dfs = []
+            for task_idx, task in enumerate(tasks): 
+                b, c, (x, y, z) = task
+                df = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z, "knowledge": list(torch.tensor([b, c]).repeat(100, 1))})
+                df['task'] = task_idx
+                dfs.append(df)
+                # self.data['task'] = np.floor(self.data.index / 100).astype(int)
+            self.data = pd.concat(dfs)
+
+        self.knowledge_type = knowledge_type
+
+        if knowledge_type == "bc":
+            self.knowledge_input_dim = 2
+        elif knowledge_type in ["b", "c"]: 
+            self.knowledge_input_dim = 1
+        elif knowledge_type == 'none':
+            # we will be set to zeros in this case
+            self.knowledge_input_dim = 1
+        elif knowledge_type == "z":
+            if task == "single": 
+                self.knowledge_input_dim = 1
 
         #todo: fix this so that the dimension is "real" (pre representation)
         self.dim_x = 1
         self.dim_y = 1
-        self.knowledge_input_dim = 1
         self.split = split
 
         self.weighted = False
@@ -238,16 +275,21 @@ class NuRD(Dataset):
 
         x = self.data.iloc[indices]['x'].values
         y = self.data.iloc[indices]['y'].values
-        knowledge = self.data.iloc[indices]['z'].values
+        z = self.data.iloc[indices]['z'].values
 
         x = torch.tensor(list(x), dtype=torch.float32)
         y = torch.tensor(list(y), dtype=torch.float32).unsqueeze(-1)
-        knowledge = torch.tensor(list(knowledge), dtype=torch.float32).unsqueeze(-1)
+        z = torch.tensor(list(z), dtype=torch.float32).unsqueeze(-1)
+        
+        if self.knowledge_type == "z":
+            knowledge = j
+        else: 
+            knowledge = self.get_knowledge(idx)
 
         if self.use_optimal_rep: 
             x = x.sum(axis=-1).unsqueeze(-1)
 
-        return x, y, knowledge
+        return x, y, knowledge, z
 
     def set_use_optimal_rep(self):
         self.use_optimal_rep = True
@@ -262,3 +304,14 @@ class NuRD(Dataset):
         self.upsample_factor = 10   
         # self.set_use_optimal_rep()
 
+    def get_knowledge(self, task): 
+        if self.knowledge_type == "none":
+            return torch.zeros((1, 1))
+
+        base_knowledge = self.data_generating_params[task]
+        if self.knowledge_type == "b":
+            self.task
+        elif self.knowledge_type == "b":
+            self.task
+        elif self.knowledge_type == "bc":
+            self.task

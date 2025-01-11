@@ -8,7 +8,7 @@ import optuna
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir))))
 from dataset.utils import setup_dataloaders
-from models.inp import INP
+from models.models import INP
 from models.loss import ELBOLoss
 
 EVAL_ITER = 500
