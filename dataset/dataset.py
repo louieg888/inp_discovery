@@ -234,16 +234,11 @@ class NuRD(Dataset):
 
         self.knowledge_type = knowledge_type
 
-        if knowledge_type == "bc":
-            self.knowledge_input_dim = 2
-        elif knowledge_type in ["b", "c"]: 
-            self.knowledge_input_dim = 1
-        elif knowledge_type == 'none':
-            # we will be set to zeros in this case
-            self.knowledge_input_dim = 1
-        elif knowledge_type == "z":
+        if knowledge_type == "z":
             if task == "single": 
                 self.knowledge_input_dim = 1
+        else:
+            self.knowledge_input_dim = 3
 
         #todo: fix this so that the dimension is "real" (pre representation)
         self.dim_x = 1
@@ -282,7 +277,7 @@ class NuRD(Dataset):
         z = torch.tensor(list(z), dtype=torch.float32).unsqueeze(-1)
         
         if self.knowledge_type == "z":
-            knowledge = j
+            knowledge = z
         else: 
             knowledge = self.get_knowledge(idx)
 
@@ -305,13 +300,25 @@ class NuRD(Dataset):
         # self.set_use_optimal_rep()
 
     def get_knowledge(self, task): 
-        if self.knowledge_type == "none":
-            return torch.zeros((1, 1))
+        knowledge = self.data_generating_params[task]
+        knowledge = torch.tensor(knowledge, dtype=torch.float32).reshape(2, 1)
+        indicator = torch.eye(2)
+        knowledge = torch.cat([indicator, knowledge], dim=1)
 
-        base_knowledge = self.data_generating_params[task]
-        if self.knowledge_type == "b":
-            self.task
-        elif self.knowledge_type == "b":
-            self.task
-        elif self.knowledge_type == "bc":
-            self.task
+        if self.knowledge_type == 'bc':
+            revealed = np.random.choice([0, 1])
+            mask = torch.zeros((2, 1))
+            mask[revealed] = 1.0
+            knowledge = knowledge * mask
+        elif self.knowledge_type == 'b':
+            knowledge = knowledge[0, :].unsqueeze(0)
+        elif self.knowledge_type == 'c':
+            knowledge = knowledge[1, :].unsqueeze(0)
+        elif self.knowledge_type == 'full':
+            pass
+        elif self.knowledge_type  == 'none':
+            knowledge = torch.zeros_like(knowledge)
+        else:
+            raise NotImplementedError
+
+        return knowledge

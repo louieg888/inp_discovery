@@ -128,7 +128,6 @@ def setup_dataloaders(config):
         val_dataset = NuRD(split='val', knowledge_type=config.knowledge_type)
         test_dataset = NuRD(split='test', knowledge_type=config.knowledge_type)
 
-        id_val_dataloader = get_dataloader(id_val_dataset, config)
         # id_val_dataset.set_use_optimal_rep()
         # val_dataset.set_use_optimal_rep()
         # test_dataset.set_use_optimal_rep()
@@ -145,9 +144,11 @@ def setup_dataloaders(config):
 
     train_dataloader = get_dataloader(train_dataset, config)
     critic_dataloader = get_dataloader(train_dataset, config)
+    id_val_dataloader = get_dataloader(id_val_dataset, config)
     val_dataloader = get_dataloader(val_dataset, config)
     test_dataloader = get_dataloader(test_dataset, config)
 
+    # return train_dataloader, val_dataloader, test_dataloader, extras
     return train_dataloader, critic_dataloader, val_dataloader, id_val_dataloader, test_dataloader, extras
 
 
