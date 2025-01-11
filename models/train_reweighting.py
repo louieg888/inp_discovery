@@ -36,9 +36,28 @@ class Trainer:
         self.num_epochs = config.num_epochs
 
         self.model = INP(config)
-        self.model.to(self.device)
-        self.pred_optimizer = torch.optim.Adam(self.model.parameters(), lr=config.lr)
+        self.z_representation_model = VectorRepresentationModel(input_size=1, hidden_size=16, num_hidden_layers=1, output_size=1)
+        self.x_representation_model = VectorRepresentationModel(input_size=2, hidden_size=16, num_hidden_layers=1, output_size=1)
+        self.critic_model = CriticModel(input_size=3, hidden_size=16, num_hidden_layers=2, output_size=2)
 
+        self.model.to(self.device)
+
+        self.models = {
+            "pred_model": self.model,
+            "x_rep_model": self.x_representation_model,
+            "z_rep_model": self.z_representation_model,
+            "critic_model": self.critic_model,
+        }
+
+        self.pred_optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.lr)
+        self.critic_optimizer = torch.optim.Adam( list(self.critic_model.parameters()) + list(self.z_representation_model.parameters()), lr=self.config.lr)
+        self.x_representation_optimizer = torch.optim.Adam(self.x_representation_model.parameters(), lr=self.config.lr)
+
+        self.optimizers = {
+            "pred_optim": self.pred_optimizer,
+            "critic_optim": self.critic_optimizer,
+            "x_rep_optim": self.x_representation_optimizer,
+        }
         
         self.loss_func = ELBOLoss(beta=config.beta)
         if load_path is not None:
@@ -77,7 +96,8 @@ class Trainer:
             y_context = torch.gather(y_context, 1, indices)
 
         #todo: only for rep
-        x_context, x_target = self.x_representation_model(x_context), self.x_representation_model(x_target)
+        if self.config.reweight:
+            x_context, x_target = self.x_representation_model(x_context), self.x_representation_model(x_target)
         
         if self.config.use_knowledge:
             output = self.model(
@@ -175,29 +195,30 @@ class Trainer:
         self.x_representation_model.train()
         self.model.train()
 
-    def train(self):
-        it = 0
-        min_eval_loss = np.inf
-        dataset = self.train_dataloader.dataset
+    #todo: rename appropriately
+    def train_reweighting_and_weight_train_set(self):
+        def _generate_folds(dataset, config):
+            # Create (train, val) splits
+            kf = KFold(n_splits=5, shuffle=False)
 
-        kf = KFold(n_splits=5, shuffle=False)
-
-        # Create (train, val) splits
-        folds = []
-        fold_indices = []
-
-        # generate k folds of data and save in folds
-        for train_idx, val_idx in kf.split(range(len(dataset))):
-            fold_indices.append((train_idx, val_idx))
-            train_subset = torch.utils.data.Subset(dataset, train_idx)
-            val_subset = torch.utils.data.Subset(dataset, val_idx)
+            folds = []
+            fold_indices = []
             
-            original_batch_size, self.config.batch_size = self.config.batch_size, 1000
-            train_dataloader = get_dataloader(train_subset, self.config)
-            val_dataloader = get_dataloader(val_subset, self.config)
-            self.config.batch_size = original_batch_size
+            # generate k folds of data and save in folds
+            for train_idx, val_idx in kf.split(range(len(dataset))):
+                fold_indices.append((train_idx, val_idx))
+                train_subset = torch.utils.data.Subset(dataset, train_idx)
+                val_subset = torch.utils.data.Subset(dataset, val_idx)
+                
+                original_batch_size, config.batch_size = config.batch_size, 1000
+                train_dataloader = get_dataloader(train_subset, config)
+                val_dataloader = get_dataloader(val_subset, config)
+                config.batch_size = original_batch_size
 
-            folds.append((train_dataloader, val_dataloader))
+                folds.append((train_dataloader, val_dataloader))
+
+        dataset = self.train_dataloader.dataset
+        folds = _generate_folds(dataset, self.config)
 
         reweighting_models = []
 
@@ -248,7 +269,6 @@ class Trainer:
             reweighting_models.append({
                 "model": self.reweighting_model,
                 "min_eval_loss": min_eval_loss,
-                "indices": val_idx,
                 "val_dataloader": val_dataloader
             })
 
@@ -283,7 +303,7 @@ class Trainer:
                 })
 
         # all of this is just to account for potential randomization / shuffling in splits
-        # so that the weights go to the right place :) 
+        # so that the weights go to the right place  
         all_indices = torch.cat([torch.tensor(entry["indices"]) for entry in index_weight_mappings])
         all_weights = torch.cat([entry["y_unnormalized_weights"] for entry in index_weight_mappings])
 
@@ -293,33 +313,37 @@ class Trainer:
         torch.save(sorted_weights, "saves/weights.pt")
 
         self.train_dataloader.dataset.add_weights(sorted_weights)
+
+        # makes sure we don't do the weighting twice if the train and critic are using the same dataset object
         if not self.critic_dataloader.dataset.weighted:
             self.critic_dataloader.dataset.add_weights(sorted_weights)
-        # val_dataloader.dataset.dataset.set_use_optimal_rep()
 
-        ############
-        #
-        # end of weighting
-        #
-        ###########3
+        # todo: assert that full range has been reached at the end of it all. 
 
-        self.z_representation_model = VectorRepresentationModel(input_size=1, hidden_size=16, num_hidden_layers=1, output_size=1)
-        self.x_representation_model = VectorRepresentationModel(input_size=2, hidden_size=16, num_hidden_layers=1, output_size=1)
-        self.critic_model = CriticModel(input_size=3, hidden_size=16, num_hidden_layers=2, output_size=2)
+    def run_critic_training_step(self):
+        self.set_critic_training()
+        try: 
+            inner_batch = next(self.critic_dataloader_iterator)
+        except StopIteration: 
+            self.critic_dataloader_iterator = iter(self.critic_dataloader)
+            inner_batch = next(self.critic_dataloader_iterator)
 
-        self.critic_optimizer = torch.optim.Adam( list(self.critic_model.parameters()) + list(self.z_representation_model.parameters()), lr=config.lr)
-        self.x_representation_optimizer = torch.optim.Adam(self.x_representation_model.parameters(), lr=config.lr)
+        self.critic_optimizer.zero_grad()
 
-        # goaL: 
-        # new dataloader should do two things: 
-            # 1: apply the weights to the context sampling for training data. 
-            # store mapping from idx to probabilities
+        losses = self.get_all_losses(inner_batch)
+        critic_loss = losses['critic_loss'] 
 
+        wandb.log({"critic_loss": critic_loss.item()})
+        # Backpropagation and optimizer step
+        critic_loss.backward()
+        self.critic_optimizer.step()
 
-                
+    def train(self):
+        it = 0
+        min_eval_loss = np.inf
 
-        # assert that full range has been reached at the end of it all. 
-        
+        if self.config.reweight: 
+            self.train_reweighting_and_weight_train_set()
 
         # todo: make sure you account for p(y) before you leave the synthetic dataset. 
         # this is technically not necessary since it's constant due to weight normalization and upsampling
@@ -327,12 +351,12 @@ class Trainer:
         # use the modified dataloader to do the rest of the INP process
 
         # once this works, we need to adapt the INP to learn the representation on the fly. How will this work?
-            # 
-        # 
 
         it = 0
         min_eval_loss = np.inf
-        self.critic_dataloader_iterator = iter(self.critic_dataloader)
+
+        if self.config.reweight:
+            self.critic_dataloader_iterator = iter(self.critic_dataloader)
 
         for epoch in range(self.num_epochs + 1):
             #self.scheduler.step()
@@ -343,25 +367,34 @@ class Trainer:
                 self.set_pred_training()
 
                 self.pred_optimizer.zero_grad()
-                self.x_representation_optimizer.zero_grad()
+                
+                if self.config.reweight:
+                    self.x_representation_optimizer.zero_grad()
 
                 results = self.get_all_losses(batch)
                 loss = results['loss']
                 kl = results['kl']
                 negative_ll = results['negative_ll']
-                info_loss = results['information_loss']
 
-                total_loss = loss + info_loss
+                if self.config.reweight:
+                    info_loss = results['information_loss']
+                    total_loss = loss + info_loss
+                else:
+                    total_loss = loss
+
 
                 total_loss.backward()
-
                 self.pred_optimizer.step()
-                self.x_representation_optimizer.step()
+
+                if self.config.reweight:
+                    self.x_representation_optimizer.step()
 
                 wandb.log({"train_loss": loss})
                 wandb.log({"train_negative_ll": negative_ll})
                 wandb.log({"train_kl": kl})
-                wandb.log({"info_loss": info_loss})
+
+                if self.config.reweight:
+                    wandb.log({"info_loss": info_loss})
 
                 if it % EVAL_ITER == 0 and it > 0:
                     for val_name, val_set in zip(("ood", "id"), (self.val_dataloader, self.id_val_dataloader)):
@@ -373,81 +406,21 @@ class Trainer:
                             wandb.log({f"{val_name}_eval_loss_{k}": v})
 
                         if val_name == "id" and val_loss < min_eval_loss and it > 1500:
+
                             min_eval_loss = val_loss
-                            torch.save(
-                                self.model.state_dict(), f"{self.save_dir}/model_best.pt"
-                            )
-                            torch.save(
-                                self.x_representation_model.state_dict(), f"{self.save_dir}/x_representation_model_best.pt"
-                            )
-                            torch.save(
-                                self.z_representation_model.state_dict(), f"{self.save_dir}/z_representation_model_best.pt"
-                            )
-                            torch.save(
-                                self.critic_model.state_dict(), f"{self.save_dir}/critic_model_best.pt"
-                            )
-                            torch.save(
-                                self.pred_optimizer.state_dict(),
-                                f"{self.save_dir}/pred_optim_best.pt" 
-                            )
-                            torch.save(
-                                self.x_representation_optimizer.state_dict(),
-                                f"{self.save_dir}/x_representation_optim_best.pt" 
-                            )
-                            torch.save(
-                                self.critic_optimizer.state_dict(),
-                                f"{self.save_dir}/critic_optim_best.pt" 
-                            )
+                            for model_name, model in self.models.items():
+                                torch.save(model.state_dict(), f"{self.save_dir}/{model_name}_best.pt")
+                            for optim_name, optim in self.optimizers.items():
+                                torch.save(optim.state_dict(), f"{self.save_dir}/{optim_name}_best.pt")
                             
                             print(f"Best model saved at iteration {self.last_save_it + it}")
 
 
-                # don't forget to set models apprpriately to eval and stuff
-                
-                self.set_critic_training()
-                for _ in range(8):
-                    try: 
-                        inner_batch = next(self.critic_dataloader_iterator)
-                    except StopIteration: 
-                        self.critic_dataloader_iterator = iter(self.critic_dataloader)
-                        inner_batch = next(self.critic_dataloader_iterator)
-
-                    self.critic_optimizer.zero_grad()
-
-                    losses = self.get_all_losses(inner_batch)
-                    critic_loss = losses['critic_loss'] 
-
-                    wandb.log({"critic_loss": critic_loss.item()})
-                    # Backpropagation and optimizer step
-                    critic_loss.backward()
-                    self.critic_optimizer.step()
-
-                    # Optionally log the losses (e.g., using wandb or print statements)
-
-                # this is the inner training loop
-
-                # for num_critic_batches (8 i think) in critic_loader 
-                    # self.critic_optimizer.zero_grad()
-
-                    # get batch (critic)
-                    # x, y, z = batch
-                    
-                    # rep_x, rep_z, shuffled_rep_z = representation(x), representation(z), shuffled(representation(z))
-                    # logit_real_given_xy_real_z = self.critic_model(rep_x, y, rep_z)
-                    # logit_real_given_xy_fake_z = self.critic_model(rep_x, y, shuffled_rep_z)
-
-                    # # these should be for the "real" data
-                    # joint_labels = torch.ones(logit_real_given_xy_real_z.size())
-                    # # these should be for the "fake" data 
-                    # marginal_labels = torch.ones(logit_real_given_xy_real_z.size())
-
-                    # loss_real = F.cross_entropy(p_real_given_xy_real_z, joint_labels)
-                    # loss_fake = F.cross_entropy(p_real_given_xy_real_z, joint_labels)
-                    # critic_loss = 0.5 * (loss_real + loss_fake)
-
-                    # log_p_real_given_xy_real_z = torch.log_softmax(logit_real_given_xy_real_z, dim=1)[:, 1]
-                    # log_p_fake_given_xy_real_z = torch.log_softmax(logit_real_given_xy_real_z, dim=1)[:, 0]
-                    # information_loss = log_p_real_given_xy_real_z - log_p_fake_given_xy_real_z
+                # only run critic training if we are doing nurd adaptation
+                if self.config.reweight: 
+                    self.set_critic_training()
+                    for _ in range(8):
+                        self.run_critic_training_step()
 
                 it += 1
 
