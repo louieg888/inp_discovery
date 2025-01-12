@@ -193,14 +193,19 @@ class NuRD(Dataset):
             self.data = pd.read_csv(f'{root}/nurd.csv', converters={"x": lambda x: list(eval(x))})
             self.data = self.data[self.data['label'] == split]
         else: 
+            all_data = []
             if split == 'train': 
-                data = generate_synthetic_data(0.5, m=10000)
+                for i in range(100):
+                    all_data.append(generate_synthetic_data(0.5, m=100, b=0, c=1))
             elif split == 'id_val':
-                data = generate_synthetic_data(0.5, m=2000)
+                for i in range(20):
+                    all_data.append(generate_synthetic_data(0.5, m=100, b=0, c=1))
             else:
-                data = generate_synthetic_data(-0.9, m=2000)
+                for i in range(20):
+                    all_data.append(generate_synthetic_data(-0.9, m=100, b=0, c=1))
 
-            x, y, z = data
+            x, y, z = [torch.cat([data[k] for data in all_data]) for k in range(3)]
+
             self.data = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z})
             self.data['task'] = np.floor(self.data.index / 100).astype(int)
 
@@ -365,6 +370,10 @@ class NuRD_(Dataset):
             
             if split == 'train':
                 for i in range(100): 
+                    data = generate_synthetic_data(0.5, m=100, b=b, c=c)
+                    tasks.append((b, c, data))
+            elif split == "id_val":
+                for i in range(20): 
                     data = generate_synthetic_data(0.5, m=100, b=b, c=c)
                     tasks.append((b, c, data))
             else: 
