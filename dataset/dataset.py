@@ -187,8 +187,10 @@ def generate_synthetic_data(a, m=5000, b=0, c=1):
 
 
 class NuRD(Dataset):
-    def __init__(self, split='train', root='./data/nurd', knowledge_type='min_max', from_csv=False, task="rando"):
+    def __init__(self, split='train', root='./data/nurd', knowledge_type='min_max', from_csv=False, task="simple"):
         # add config here
+        self.knowledge_type = knowledge_type 
+
         if from_csv: 
             self.data = pd.read_csv(f'{root}/nurd.csv', converters={"x": lambda x: list(eval(x))})
             self.data = self.data[self.data['label'] == split]
@@ -247,16 +249,21 @@ class NuRD(Dataset):
 
         x = self.data.iloc[indices]['x'].values
         y = self.data.iloc[indices]['y'].values
-        knowledge = self.data.iloc[indices]['z'].values
+        z = self.data.iloc[indices]['z'].values
 
         x = torch.tensor(list(x), dtype=torch.float32)
         y = torch.tensor(list(y), dtype=torch.float32).unsqueeze(-1)
-        knowledge = torch.tensor(list(knowledge), dtype=torch.float32).unsqueeze(-1)
+        z = torch.tensor(list(z), dtype=torch.float32).unsqueeze(-1)
+
+        if self.knowledge_type == "z":
+            knowledge = z
+        else:
+            knowledge = self.get_knowledge(idx)
 
         if self.use_optimal_rep: 
             x = x.sum(axis=-1).unsqueeze(-1)
 
-        return x, y, knowledge, knowledge
+        return x, y, knowledge, z
 
     def set_use_optimal_rep(self):
         self.use_optimal_rep = True
@@ -270,6 +277,31 @@ class NuRD(Dataset):
         self.weights = weights
         self.upsample_factor = 10   
         # self.set_use_optimal_rep()
+
+    
+    def get_knowledge(self, task): 
+        knowledge = self.data_generating_params[task]
+        knowledge = knowledge.view(2, 1)
+        indicator = torch.eye(2)
+        knowledge = torch.cat([indicator, knowledge], dim=1)
+
+        if self.knowledge_type == 'bc':
+            revealed = np.random.choice([0, 1])
+            mask = torch.zeros((2, 1))
+            mask[revealed] = 1.0
+            knowledge = knowledge * mask
+        elif self.knowledge_type == 'b':
+            knowledge = knowledge[0, :].unsqueeze(0)
+        elif self.knowledge_type == 'c':
+            knowledge = knowledge[1, :].unsqueeze(0)
+        elif self.knowledge_type == 'full':
+            pass
+        elif self.knowledge_type  == 'none':
+            knowledge = torch.zeros_like(knowledge)
+        else:
+            raise NotImplementedError
+
+        return knowledge
 
 
 
