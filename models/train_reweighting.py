@@ -152,7 +152,7 @@ class Trainer:
 
         #todo: add another part of the dataloader to extract spurious correlations.
         ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
-        y_hat = self.reweighting_model(knowledge)
+        y_hat = self.reweighting_model(ids['z'])
         acc_vec = acc_func(y_hat, y_target)
         loss_vec = ce_loss(y_hat.view(-1, 2), y_target.long().view(-1)).view(-1)
 
@@ -217,6 +217,10 @@ class Trainer:
 
                 folds.append((train_dataloader, val_dataloader))
 
+            return folds
+
+        min_eval_loss = torch.inf
+        it = 0
         dataset = self.train_dataloader.dataset
         folds = _generate_folds(dataset, self.config)
 
@@ -289,7 +293,7 @@ class Trainer:
 
                 # get_probabilities(reweighted_model, validation_loader)
                 ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
-                y_hat = model(knowledge)
+                y_hat = model(ids['z'])
                 acc_vec = acc_func(y_hat, y_target)
                 loss_vec = ce_loss(y_hat.view(-1, 2), y_target.long().view(-1)).view(-1)
 
@@ -484,7 +488,7 @@ class Trainer:
         it = 0
         self.model.eval()
         with torch.no_grad():
-            loss_num_context = [3, 5, 10]
+            loss_num_context = [3, 5, 10, 20, 30, 50]
             if self.config.min_num_context == 0:
                 loss_num_context = [0] + loss_num_context
             losses_dict = dict(zip(loss_num_context, [[] for _ in loss_num_context]))

@@ -195,24 +195,26 @@ class NuRD(Dataset):
             self.data = pd.read_csv(f'{root}/nurd.csv', converters={"x": lambda x: list(eval(x))})
             self.data = self.data[self.data['label'] == split]
         else: 
+            n_tasks = 1000
+
             if task == "multi": 
-                self.data_generating_params = (torch.rand(100, 2) - 1) * 2
+                self.data_generating_params = (torch.rand(n_tasks, 2) - 1) * 2
             else: 
-                self.data_generating_params = torch.tensor([0, 1]).repeat(100,1)
+                self.data_generating_params = torch.tensor([0, 1]).repeat(n_tasks,1)
 
             all_data = []
             if split == 'train': 
-                for i in range(100):
+                for i in range(n_tasks):
                     b, c = self.data_generating_params[i]
-                    all_data.append(generate_synthetic_data(0.5, m=100, b=b, c=c))
+                    all_data.append(generate_synthetic_data(0.5, m=100, b=b, c=1))
             elif split == 'id_val':
                 for i in range(20):
                     b, c = self.data_generating_params[i]
-                    all_data.append(generate_synthetic_data(0.5, m=100, b=b, c=c))
+                    all_data.append(generate_synthetic_data(0.5, m=100, b=b, c=1))
             else:
                 for i in range(20):
                     b, c = self.data_generating_params[i]
-                    all_data.append(generate_synthetic_data(-0.9, m=100, b=b, c=c))
+                    all_data.append(generate_synthetic_data(-0.9, m=100, b=b, c=1))
 
             x, y, z = [torch.cat([data[k] for data in all_data]) for k in range(3)]
 
@@ -220,9 +222,9 @@ class NuRD(Dataset):
             self.data['task'] = np.floor(self.data.index / 100).astype(int)
 
         #todo: fix this so that the dimension is "real" (pre representation)
-        self.dim_x = 2
+        self.dim_x = 1
         self.dim_y = 1
-        self.knowledge_input_dim = 1
+        self.knowledge_input_dim = 3
         self.split = split
 
         self.weighted = False
