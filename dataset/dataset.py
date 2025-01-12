@@ -193,16 +193,24 @@ class NuRD(Dataset):
             self.data = pd.read_csv(f'{root}/nurd.csv', converters={"x": lambda x: list(eval(x))})
             self.data = self.data[self.data['label'] == split]
         else: 
+            if task == "multi": 
+                self.data_generating_params = (torch.rand(100, 2) - 1) * 2
+            else: 
+                self.data_generating_params = torch.tensor([0, 1]).repeat(100,1)
+
             all_data = []
             if split == 'train': 
                 for i in range(100):
-                    all_data.append(generate_synthetic_data(0.5, m=100, b=0, c=1))
+                    b, c = self.data_generating_params[i]
+                    all_data.append(generate_synthetic_data(0.5, m=100, b=b, c=c))
             elif split == 'id_val':
                 for i in range(20):
-                    all_data.append(generate_synthetic_data(0.5, m=100, b=0, c=1))
+                    b, c = self.data_generating_params[i]
+                    all_data.append(generate_synthetic_data(0.5, m=100, b=b, c=c))
             else:
                 for i in range(20):
-                    all_data.append(generate_synthetic_data(-0.9, m=100, b=0, c=1))
+                    b, c = self.data_generating_params[i]
+                    all_data.append(generate_synthetic_data(-0.9, m=100, b=b, c=c))
 
             x, y, z = [torch.cat([data[k] for data in all_data]) for k in range(3)]
 
