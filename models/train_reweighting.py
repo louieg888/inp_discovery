@@ -339,7 +339,6 @@ class Trainer:
         self.critic_optimizer.step()
 
     def train(self):
-        it = 0
         min_eval_loss = np.inf
 
         if self.config.reweight: 

@@ -186,73 +186,28 @@ def generate_synthetic_data(a, m=5000, b=0, c=1):
     return x, y, z
 
 
-class _NuRD(Dataset):
+class NuRD(Dataset):
     def __init__(self, split='train', root='./data/nurd', knowledge_type='min_max', from_csv=False, task="rando"):
-        # add config here
-        """
-        Task types: 
-            - single: the traditional NuRD task. Meta-Learning over a nuisance family of distributions.
-            - multi: the NP task. Data is generated via )b + cy + z, small_var) and (b + cy - z, large_var)
-        Knowledge type: 
-            - z: add in knowledge of the z variables. 
-            - "none": no knowledge. 
-            - "b": just b. 
-            - "c": just c. 
-            - "bc": both.
-        """
-        self.knowledge_type = knowledge_type
-
         # add config here
         if from_csv: 
             self.data = pd.read_csv(f'{root}/nurd.csv', converters={"x": lambda x: list(eval(x))})
             self.data = self.data[self.data['label'] == split]
         else: 
-            b, c = 0, 1
             if split == 'train': 
-                all_data = generate_synthetic_data(0.5, m=10000, b=0, c=1)
+                data = generate_synthetic_data(0.5, m=10000)
             elif split == 'id_val':
-                all_data = generate_synthetic_data(0.5, m=2000, b=0, c=1)
+                data = generate_synthetic_data(0.5, m=2000)
             else:
-                all_data = generate_synthetic_data(-0.9, m=2000, b=0, c=1)
+                data = generate_synthetic_data(-0.9, m=2000)
 
-#             x, y, z = data
-#             self.data = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z})
-#             self.data['task'] = np.floor(self.data.index / 100).astype(int)
-
-            # if task == "multi": 
-            #     self.data_generating_params = (torch.rand(100, 2) - 1) * 2
-            # else: 
-            #     self.data_generating_params = torch.tensor([0, 1]).repeat(100,1)
-
-            tasks = []
-            for i in range(100): 
-                # b, c = self.data_generating_params[i]
-                data = (all_data[0][i*100:(i+1)*100], all_data[1][i*100:(i+1)*100], all_data[2][i*100:(i+1)*100])
-                tasks.append((b, c, data))
-
-            dfs = []
-            for task_idx, task in enumerate(tasks): 
-                b, c, (x, y, z) = task
-                df = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z, })
-                df['task'] = task_idx
-                dfs.append(df)
-                # self.data['task'] = np.floor(self.data.index / 100).astype(int)
-            self.data = pd.concat(dfs)
-            self.data = self.data.reset_index(drop=True)
-
-
-
-
-        # if knowledge_type == "z":
-        #     if task == "single": 
-        #         self.knowledge_input_dim = 1
-        # else:
-        #     self.knowledge_input_dim = 3
-        self.knowledge_input_dim = 1
+            x, y, z = data
+            self.data = pd.DataFrame({"x": [list(el.numpy()) for el in x], "y": y, "z": z})
+            self.data['task'] = np.floor(self.data.index / 100).astype(int)
 
         #todo: fix this so that the dimension is "real" (pre representation)
         self.dim_x = 2
         self.dim_y = 1
+        self.knowledge_input_dim = 1
         self.split = split
 
         self.weighted = False
@@ -276,7 +231,6 @@ class _NuRD(Dataset):
             indices = weighted_dist.sample((num_samples,))
         elif self.split == 'train': # we only do weighting / upsampling on train, so this will make comparison easier
             indices = indices.repeat(self.upsample_factor)
-
 
         x = self.data.iloc[indices]['x'].values
         y = self.data.iloc[indices]['y'].values
@@ -352,7 +306,6 @@ class _NuRD(Dataset):
 #         elif self.split == 'train': # we only do weighting / upsampling on train, so this will make comparison easier
 #             indices = indices.repeat(self.upsample_factor)
 
-
 #         x = self.data.iloc[indices]['x'].values
 #         y = self.data.iloc[indices]['y'].values
 #         knowledge = self.data.iloc[indices]['z'].values
@@ -382,8 +335,8 @@ class _NuRD(Dataset):
 
 
 
-class NuRD(Dataset):
-    def __init__(self, split='train', root='./data/nurd', knowledge_type=None, from_csv=False, task="single"):
+class NuRD_(Dataset):
+    def __init__(self, split='train', root='./data/nurd', knowledge_type='z', from_csv=False, task="single"):
 
         """
         Task types: 
@@ -409,15 +362,15 @@ class NuRD(Dataset):
                 self.data_generating_params = torch.tensor([0, 1]).repeat(100,1)
 
             tasks = []
-            for i in range(100): 
-                b, c = self.data_generating_params[i]
-                if split == 'train': 
+            
+            if split == 'train':
+                for i in range(100): 
                     data = generate_synthetic_data(0.5, m=100, b=b, c=c)
-                elif split == 'id_val':
-                    data = generate_synthetic_data(0.5, m=100, b=b, c=c)
-                else:
+                    tasks.append((b, c, data))
+            else: 
+                for i in range(20): 
                     data = generate_synthetic_data(-0.9, m=100, b=b, c=c)
-                tasks.append((b, c, data))
+                    tasks.append((b, c, data))
 
             dfs = []
             for task_idx, task in enumerate(tasks): 
@@ -495,7 +448,7 @@ class NuRD(Dataset):
 
     def get_knowledge(self, task): 
         knowledge = self.data_generating_params[task]
-        knowledge = torch.tensor(knowledge, dtype=torch.float32).reshape(2, 1)
+        knowledge = knowledge.view(2, 1)
         indicator = torch.eye(2)
         knowledge = torch.cat([indicator, knowledge], dim=1)
 
