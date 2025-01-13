@@ -488,7 +488,7 @@ class Trainer:
         it = 0
         self.model.eval()
         with torch.no_grad():
-            loss_num_context = [3, 5, 10, 20, 30, 50]
+            loss_num_context = [3, 5, 10, 20, 30, 50, 100]
             if self.config.min_num_context == 0:
                 loss_num_context = [0] + loss_num_context
             losses_dict = dict(zip(loss_num_context, [[] for _ in loss_num_context]))

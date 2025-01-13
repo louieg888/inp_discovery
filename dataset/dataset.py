@@ -197,10 +197,22 @@ class NuRD(Dataset):
         else: 
             n_tasks = 1000
 
-            if task == "multi": 
-                self.data_generating_params = (torch.rand(n_tasks, 2) - 1) * 2
-            else: 
-                self.data_generating_params = torch.tensor([0, 1]).repeat(n_tasks,1)
+            # if task == "multi": 
+            #     self.data_generating_params = (torch.rand(n_tasks, 2) - 1) * 20
+            # else: 
+            #     self.data_generating_params = torch.tensor([0, 1]).repeat(n_tasks,1)
+
+            # N(4, 1)
+            normal_random = torch.randn(n_tasks, 2) + 4
+            binary_random = (torch.rand(n_tasks, 2) > 0.5).float() * 2 - 1
+            normal_binary_random = normal_random * binary_random
+            normal_binary_random[:, 1] = 1
+
+            self.data_generating_params = normal_binary_random
+
+            # self.data_generating_params = torch.cat( (torch.tensor([2, 1]).repeat(int(n_tasks / 2), 1), torch.tensor([-2, 1]).repeat(n_tasks - int(n_tasks / 2), 1)), axis=0)
+            # self.data_generating_params = self.data_generating_params[torch.randperm(self.data_generating_params.size()[0])]
+
 
             all_data = []
             if split == 'train': 
@@ -222,7 +234,7 @@ class NuRD(Dataset):
             self.data['task'] = np.floor(self.data.index / 100).astype(int)
 
         #todo: fix this so that the dimension is "real" (pre representation)
-        self.dim_x = 1
+        self.dim_x = 2
         self.dim_y = 1
         self.knowledge_input_dim = 3
         self.split = split
