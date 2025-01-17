@@ -125,10 +125,20 @@ def setup_dataloaders(config):
         test_dataset = Temperatures(split='test', knowledge_type=config.knowledge_type)
 
     elif config.dataset == 'nurd':
-        train_dataset = NuRD(split='train', knowledge_type=config.knowledge_type, task="multi")
-        id_val_dataset = NuRD(split='id_val', knowledge_type=config.knowledge_type, task="multi")
-        val_dataset = NuRD(split='val', knowledge_type=config.knowledge_type, task="multi")
-        test_dataset = NuRD(split='test', knowledge_type=config.knowledge_type, task="multi")
+        if config.reweight: 
+            dim_x = 1
+        else: 
+            dim_x = 2
+
+        if config.task == "multi": 
+            task = "multi"
+        else: 
+            task = "single"
+
+        train_dataset = NuRD(split='train', knowledge_type=config.knowledge_type, task=task, dim_x=dim_x, use_optimal_rep=config.use_optiomal_rep)
+        id_val_dataset = NuRD(split='id_val', knowledge_type=config.knowledge_type, task=task, dim_x=dim_x, use_optimal_rep=config.use_optimal_rep)
+        val_dataset = NuRD(split='val', knowledge_type=config.knowledge_type, task=task, dim_x=dim_x, use_optimal_rep=config.use_optimal_rep)
+        test_dataset = NuRD(split='test', knowledge_type=config.knowledge_type, task=task, dim_x=dim_x, use_optimal_rep=config.use_optimal_rep)
 
         # id_val_dataset.set_use_optimal_rep()
         # val_dataset.set_use_optimal_rep()

@@ -52,6 +52,7 @@ def main():
     parser.add_argument('--n-trials', type=int, help='Number of optuna trials', default=1)
     parser.add_argument('--beta', type=float, help='Beta VAE', default=1)
     parser.add_argument('--reweight', type=bool, help='whether to reweight', default=False)
+    parser.add_argument('--use-optimal-rep', type=bool, help='whether to use the optimal representation', default=False)
     
     # dataloader
     parser.add_argument('--dataset', type=str, help='Dataset', default='custom-regression')
@@ -62,6 +63,7 @@ def main():
     parser.add_argument('--num-targets', type=int, help='Number of targets', default=100)
     parser.add_argument('--noise', type=float, help='Observation noise std', default=0)
     parser.add_argument('--x-sampler', type=str, help='X sampler', default='uniform')
+    parser.add_argument('--task', type=str, help='task type [multi or single]', default="single")
 
     # knowledge and parameter freezing
     parser.add_argument('--use-knowledge', type=str2bool, const=True, nargs='?', help='Use text inputs', default=False)
